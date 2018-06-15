@@ -25,7 +25,7 @@ def update_routing(votes, biases, logit_shape, num_dims, input_dim, output_dim, 
         preactivate_unrolled = route * votes_trans
         preact_trans = tf.transpose(preactivate_unrolled, r_t_shape)
         preactivate = tf.reduce_sum(preact_trans, axis=1) + biases
-        activation = _squash(preactivate)
+        activation = squash(preactivate)
         activations = activations.write(i, activation)
         act_3d = K.expand_dims(activation, 1)
         tile_shape = np.ones(num_dims, dtype=np.int32).tolist()
@@ -33,7 +33,7 @@ def update_routing(votes, biases, logit_shape, num_dims, input_dim, output_dim, 
         act_replicated = tf.tile(act_3d, tile_shape)
         distances = tf.reduce_sum(votes * act_replicated, axis=-1)
         logits += distances
-        return (i + 1, logits, activations)
+        return i + 1, logits, activations
 
     activations = tf.TensorArray(
       dtype=tf.float32, size=num_routing, clear_after_read=False)
@@ -49,7 +49,7 @@ def update_routing(votes, biases, logit_shape, num_dims, input_dim, output_dim, 
     return K.cast(activations.read(num_routing - 1), dtype='float32')
 
 
-def _squash(input_tensor):
-    norm = tf.norm(input_tensor, axis=-1, keep_dims=True)
-    norm_squared = norm * norm
-    return (input_tensor / norm) * (norm_squared / (1 + norm_squared))
+def squash(input_tensor, axis=-1):
+    squared_norm = K.sum(K.square(input_tensor), axis, keepdims=True)
+    scale = squared_norm / (1 + squared_norm) / K.sqrt(squared_norm + K.epsilon())
+    return scale * input_tensor

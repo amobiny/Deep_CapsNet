@@ -56,8 +56,7 @@ class ConvCapsuleLayer(layers.Layer):
         votes.set_shape((None, self.num_in_caps, conv_height.value, conv_width.value,
                          self.num_caps, self.caps_dim))
 
-        logit_shape = K.stack([
-            input_shape[1], input_shape[0], votes_shape[1], votes_shape[2], self.num_caps])
+        logit_shape = K.stack([input_shape[1], input_shape[0], votes_shape[1], votes_shape[2], self.num_caps])
         biases_replicated = K.tile(self.b, [conv_height.value, conv_width.value, 1, 1])
 
         activations = update_routing(votes=votes,

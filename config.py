@@ -15,7 +15,7 @@ flags.DEFINE_float('lr_min', 1e-5, 'Minimum learning rate')
 # Hyper-parameters
 flags.DEFINE_string('loss_type', 'cross-entropy', 'cross-entropy or dice')
 flags.DEFINE_float('lmbda', 1e-3, 'L2 regularization coefficient')
-flags.DEFINE_integer('batch_size', 2, 'training batch size')
+flags.DEFINE_integer('batch_size', 16, 'training batch size')
 
 # data
 flags.DEFINE_integer('N', 20, 'Total number of training images')
@@ -38,7 +38,7 @@ flags.DEFINE_string('model_name', 'model', 'Model file name')
 flags.DEFINE_integer('reload_step', 0, 'Reload step to continue training')
 
 # network architecture
-flags.DEFINE_integer('num_cls', 2, 'Number of output classes')
+flags.DEFINE_integer('num_cls', 10, 'Number of output classes')
 flags.DEFINE_boolean('use_BN', True, 'Adds Batch-Normalization to all convolutional layers')
 flags.DEFINE_integer('start_channel_num', 16, 'start number of outputs for the first conv layer')
 flags.DEFINE_integer('filter_size', 3, 'Filter size for the conv and deconv layers')
