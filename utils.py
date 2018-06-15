@@ -1,5 +1,6 @@
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
+import scipy
 
 
 def load_data(mode='train'):
@@ -41,8 +42,3 @@ def reformat(x, y):
     labels = (np.arange(num_class) == y[:, None]).astype(np.float32)
     return dataset, labels
 
-
-def get_next_batch(x, y, start, end):
-    x_batch = x[start:end]
-    y_batch = y[start:end]
-    return x_batch, y_batch

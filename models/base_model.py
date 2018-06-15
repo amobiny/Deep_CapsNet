@@ -41,18 +41,6 @@ class BaseModel(object):
             self.output_masked = tf.multiply(tf.squeeze(self.digit_caps), tf.expand_dims(reconst_targets, -1))
             # [?, 10, 16]
 
-    def decoder(self):
-        with tf.variable_scope('Decoder'):
-            decoder_input = tf.reshape(self.output_masked, [-1, self.conf.num_cls * self.conf.digit_caps_dim])
-            # [?, 160]
-            fc1 = tf.layers.dense(decoder_input, self.conf.h1, activation=tf.nn.relu, name="FC1")
-            # [?, 512]
-            fc2 = tf.layers.dense(fc1, self.conf.h2, activation=tf.nn.relu, name="FC2")
-            # [?, 1024]
-            self.decoder_output = tf.layers.dense(fc2, self.conf.width*self.conf.height,
-                                                  activation=tf.nn.sigmoid, name="FC3")
-            # [?, 784]
-
     def loss_func(self):
         # 1. The margin loss
         with tf.variable_scope('Margin_Loss'):
@@ -127,7 +115,7 @@ class BaseModel(object):
 
     def save_summary(self, summary, step):
         print('----> Summarizing at step {}'.format(step))
-        if self.is_training:
+        if self.mask_with_labels:
             self.train_writer.add_summary(summary, step)
         else:
             self.valid_writer.add_summary(summary, step)
@@ -140,32 +128,35 @@ class BaseModel(object):
             print('----> Start Training')
         data_reader = DataLoader(self.conf)
         num_tr_step = self.conf.num_tr // self.conf.batch_size
+        global_step = 0
         for epoch in range(self.conf.max_epoch+1):
+            data_reader.randomize()
             for train_step in range(num_tr_step):
                 print('Step: {}'.format(train_step))
-                start = 
-                end =
+                start = train_step * self.conf.batch_size
+                end = (train_step + 1) * self.conf.batch_size
                 if train_step % self.conf.SUMMARY_FREQ == 0:
                     x_batch, y_batch = data_reader.next_batch(start, end)
-                    feed_dict = {self.x: x_batch, self.y: y_batch}
+                    feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                     _, loss, acc, summary = self.sess.run([self.train_op, self.total_loss, self.accuracy, self.merged_summary],
                                                           feed_dict=feed_dict)
                     self.save_summary(summary, train_step + self.conf.reload_step)
                     print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
                 else:
-                    x_batch, y_batch = data_reader.next_batch()
-                    feed_dict = {self.x: x_batch, self.y: y_batch}
+                    x_batch, y_batch = data_reader.next_batch(start, end)
+                    feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                     self.sess.run(self.train_op, feed_dict=feed_dict)
                 if train_step % self.conf.VAL_FREQ == 0:
                     x_val, y_val = data_reader.get_validation()
                     feed_dict = {self.x: x_val, self.y: y_val}
                     loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
                                                        feed_dict=feed_dict)
-                    self.save_summary(summary, train_step + self.conf.reload_step)
+                    self.save_summary(summary, global_step + self.conf.reload_step)
                     print('-' * 30 + 'Validation' + '-' * 30)
                     print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
                     print('-' * 70)
-            self.save(epoch + self.conf.reload_step)
+                global_step += 1
+            self.save(epoch + self.conf.reload_epoch)
 
     def test(self):
         pass

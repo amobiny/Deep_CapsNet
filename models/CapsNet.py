@@ -30,12 +30,24 @@ class CapsNet(BaseModel):
             secondary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=16, strides=1, padding='same',
                                               routings=3, name='secondarycaps')(primary_caps)
             _, H, W, D, dim = secondary_caps.get_shape()
-            sec_cap_reshaped = layers.Reshape((H.value*W.value*D.value, C.value))(secondary_caps)
+            sec_cap_reshaped = layers.Reshape((H.value * W.value * D.value, C.value))(secondary_caps)
 
             # Layer 4: Fully-connected Capsule
             self.digit_caps = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
-                                        routings=3, name='secondarycaps')(sec_cap_reshaped)
+                                             routings=3, name='secondarycaps')(sec_cap_reshaped)
             # [?, 10, 16]
 
             self.mask()
             self.decoder()
+
+    def decoder(self):
+        with tf.variable_scope('Decoder'):
+            decoder_input = tf.reshape(self.output_masked, [-1, self.conf.num_cls * self.conf.digit_caps_dim])
+            # [?, 160]
+            fc1 = tf.layers.dense(decoder_input, self.conf.h1, activation=tf.nn.relu, name="FC1")
+            # [?, 512]
+            fc2 = tf.layers.dense(fc1, self.conf.h2, activation=tf.nn.relu, name="FC2")
+            # [?, 1024]
+            self.decoder_output = tf.layers.dense(fc2, self.conf.width * self.conf.height,
+                                                  activation=tf.nn.sigmoid, name="FC3")
+            # [?, 784]
