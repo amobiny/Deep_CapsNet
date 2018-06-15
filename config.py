@@ -39,9 +39,7 @@ flags.DEFINE_integer('reload_step', 0, 'Reload step to continue training')
 
 # network architecture
 flags.DEFINE_integer('num_cls', 10, 'Number of output classes')
-flags.DEFINE_boolean('use_BN', True, 'Adds Batch-Normalization to all convolutional layers')
-flags.DEFINE_integer('start_channel_num', 16, 'start number of outputs for the first conv layer')
-flags.DEFINE_integer('filter_size', 3, 'Filter size for the conv and deconv layers')
-flags.DEFINE_integer('pool_filter_size', 2, 'Filter size for pooling layers')
+flags.DEFINE_integer('h1', 512, 'Number of hidden units of the first FC layer of the reconstruction network')
+flags.DEFINE_integer('h2', 1024, 'Number of hidden units of the second FC layer of the reconstruction network')
 
 args = tf.app.flags.FLAGS

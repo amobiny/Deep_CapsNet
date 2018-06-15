@@ -16,7 +16,7 @@ class BaseModel(object):
     def create_placeholders(self):
         with tf.name_scope('Input'):
             self.x = tf.placeholder(tf.float32, self.input_shape, name='input')
-            self.y = tf.placeholder(tf.int64, self.output_shape, name='annotation')
+            self.y = tf.placeholder(tf.float32, self.output_shape, name='annotation')
             # self.is_training = tf.placeholder_with_default(True, shape=(), name='is_training')
             self.mask_with_labels = tf.placeholder_with_default(False, shape=(), name="mask_with_labels")
 

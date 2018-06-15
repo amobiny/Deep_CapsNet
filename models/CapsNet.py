@@ -6,12 +6,8 @@ import tensorflow as tf
 
 
 class CapsNet(BaseModel):
-    def __init__(self, sess, conf,
-                 num_levels=4):
+    def __init__(self, sess, conf):
         super(CapsNet, self).__init__(sess, conf)
-        self.num_levels = num_levels
-        self.k_size = self.conf.filter_size
-        self.down_conv_factor = 2
         self.build_network(self.x)
         self.configure_network()
 
@@ -34,13 +30,13 @@ class CapsNet(BaseModel):
             secondary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=16, strides=1, padding='same',
                                               routings=3, name='secondarycaps')(primary_caps)
             _, H, W, D, dim = secondary_caps.get_shape()
-            sec_cap_reshaped = layers.Reshape((H.value*W.value*D.value, C.value))(conv1)
+            sec_cap_reshaped = layers.Reshape((H.value*W.value*D.value, C.value))(secondary_caps)
 
             # Layer 3: Fully-connected Capsule
             digit_caps_dim = 16
             digit_caps = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=digit_caps_dim,
                                         routings=3, name='secondarycaps')(sec_cap_reshaped)
-            # [batch_size, 10, 16]
+            # [?, 10, 16]
 
             # Decoder
             with tf.variable_scope('Masking'):
@@ -50,7 +46,7 @@ class CapsNet(BaseModel):
 
                 y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
                 # [?, 1]
-                self.y_pred = tf.reshape(y_prob_argmax, shape=(-1))
+                self.y_pred = tf.reshape(y_prob_argmax, shape=())
                 # [?] (predicted labels)
                 y_pred_ohe = tf.one_hot(self.y_pred, depth=self.conf.num_cls)
                 # [?, 10] (one-hot-encoded predicted labels)
@@ -68,10 +64,12 @@ class CapsNet(BaseModel):
                 # [?, 160]
 
             with tf.variable_scope('Decoder'):
-                fc1 = tf.layers.dense(decoder_input, n_hidden1, activation=tf.nn.relu, name="FC1")
-                # [batch_size, 512]
-                fc2 = tf.layers.dense(fc1, n_hidden2, activation=tf.nn.relu, name="FC2")
-                # [batch_size, 1024]
-                self.decoder_output = tf.layers.dense(fc2, n_output, activation=tf.nn.sigmoid, name="FC3")
-                # [batch_size, 784]
+                fc1 = tf.layers.dense(decoder_input, self.conf.h1, activation=tf.nn.relu, name="FC1")
+                # [?, 512]
+                fc2 = tf.layers.dense(fc1, self.conf.h2, activation=tf.nn.relu, name="FC2")
+                # [?, 1024]
+                self.decoder_output = tf.layers.dense(fc2, self.conf.width*self.conf.height,
+                                                      activation=tf.nn.sigmoid, name="FC3")
+                # [?, 784]
+
             print()
