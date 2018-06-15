@@ -18,6 +18,40 @@ class BaseModel(object):
             self.y = tf.placeholder(tf.float32, self.output_shape, name='annotation')
             self.mask_with_labels = tf.placeholder_with_default(False, shape=(), name="mask_with_labels")
 
+    def mask(self):
+        with tf.variable_scope('Masking'):
+            epsilon = 1e-9
+            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keep_dims=True) + epsilon)
+            # [?, 10, 1]
+
+            y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
+            # [?, 1]
+            self.y_pred = tf.reshape(y_prob_argmax, shape=())
+            # [?] (predicted labels)
+            y_pred_ohe = tf.one_hot(self.y_pred, depth=self.conf.num_cls)
+            # [?, 10] (one-hot-encoded predicted labels)
+
+            reconst_targets = tf.cond(self.mask_with_labels,  # condition
+                                      lambda: self.y,  # if True (Training)
+                                      lambda: y_pred_ohe,  # if False (Test)
+                                      name="reconstruction_targets")
+            # [?, 10]
+
+            self.output_masked = tf.multiply(tf.squeeze(self.digit_caps), tf.expand_dims(reconst_targets, -1))
+            # [?, 10, 16]
+
+    def decoder(self):
+        with tf.variable_scope('Decoder'):
+            decoder_input = tf.reshape(self.output_masked, [-1, self.conf.num_cls * self.conf.digit_caps_dim])
+            # [?, 160]
+            fc1 = tf.layers.dense(decoder_input, self.conf.h1, activation=tf.nn.relu, name="FC1")
+            # [?, 512]
+            fc2 = tf.layers.dense(fc1, self.conf.h2, activation=tf.nn.relu, name="FC2")
+            # [?, 1024]
+            self.decoder_output = tf.layers.dense(fc2, self.conf.width*self.conf.height,
+                                                  activation=tf.nn.sigmoid, name="FC3")
+            # [?, 784]
+
     def loss_func(self):
         # 1. The margin loss
         with tf.variable_scope('Margin_Loss'):
@@ -74,8 +108,8 @@ class BaseModel(object):
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()
         self.saver = tf.train.Saver(var_list=trainable_vars, max_to_keep=1000)
-        self.train_writer = tf.summary.FileWriter(self.conf.logdir + '/train/', self.sess.graph)
-        self.valid_writer = tf.summary.FileWriter(self.conf.logdir + '/valid/')
+        self.train_writer = tf.summary.FileWriter(self.conf.logdir+self.conf.run_name+'/train/', self.sess.graph)
+        self.valid_writer = tf.summary.FileWriter(self.conf.logdir+self.conf.run_name+'/valid/')
         self.configure_summary()
         print('*' * 50)
         print('Total number of trainable parameters: {}'.
@@ -83,19 +117,11 @@ class BaseModel(object):
         print('*' * 50)
 
     def configure_summary(self):
-        summary_list = [tf.summary.scalar('learning_rate', self.learning_rate),
-                        tf.summary.scalar('loss', self.loss),
-                        tf.summary.scalar('accuracy', self.accuracy),
-                        tf.summary.image('train/original_image',
-                                         self.x[:, :, :, self.conf.depth / 2],
-                                         max_outputs=self.conf.batch_size),
-                        tf.summary.image('train/prediction_mask',
-                                         tf.cast(tf.expand_dims(self.y_pred[:, :, :, self.conf.depth / 2], -1),
-                                                 tf.float32),
-                                         max_outputs=self.conf.batch_size),
-                        tf.summary.image('train/original_mask',
-                                         tf.cast(tf.expand_dims(self.y[:, :, :, self.conf.depth / 2], -1), tf.float32),
-                                         max_outputs=self.conf.batch_size)]
+        recon_img = tf.reshape(self.decoder_output, shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
+        summary_list = [tf.summary.scalar('Loss/margin_loss', self.margin_loss),
+                        tf.summary.scalar('Loss/reconstruction_loss', self.reconstruction_err),
+                        tf.summary.image('original', self.x),
+                        tf.summary.image('reconstructed', recon_img)]
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step):

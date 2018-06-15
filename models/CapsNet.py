@@ -9,7 +9,6 @@ class CapsNet(BaseModel):
     def __init__(self, sess, conf):
         super(CapsNet, self).__init__(sess, conf)
         self.build_network(self.x)
-        print()
         self.configure_network()
 
     def build_network(self, x):
@@ -38,39 +37,5 @@ class CapsNet(BaseModel):
                                         routings=3, name='secondarycaps')(sec_cap_reshaped)
             # [?, 10, 16]
 
-            self.Mask()
-            self.Decoder()
-
-    def Mask(self):
-        with tf.variable_scope('Masking'):
-            epsilon = 1e-9
-            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keep_dims=True) + epsilon)
-            # [?, 10, 1]
-
-            y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
-            # [?, 1]
-            self.y_pred = tf.reshape(y_prob_argmax, shape=())
-            # [?] (predicted labels)
-            y_pred_ohe = tf.one_hot(self.y_pred, depth=self.conf.num_cls)
-            # [?, 10] (one-hot-encoded predicted labels)
-
-            reconst_targets = tf.cond(self.mask_with_labels,  # condition
-                                      lambda: self.y,  # if True (Training)
-                                      lambda: y_pred_ohe,  # if False (Test)
-                                      name="reconstruction_targets")
-            # [?, 10]
-
-            self.output_masked = tf.multiply(tf.squeeze(self.digit_caps), tf.expand_dims(reconst_targets, -1))
-            # [?, 10, 16]
-
-    def Decoder(self):
-        with tf.variable_scope('Decoder'):
-            decoder_input = tf.reshape(self.output_masked, [-1, self.conf.num_cls * self.conf.digit_caps_dim])
-            # [?, 160]
-            fc1 = tf.layers.dense(decoder_input, self.conf.h1, activation=tf.nn.relu, name="FC1")
-            # [?, 512]
-            fc2 = tf.layers.dense(fc1, self.conf.h2, activation=tf.nn.relu, name="FC2")
-            # [?, 1024]
-            self.decoder_output = tf.layers.dense(fc2, self.conf.width*self.conf.height,
-                                                  activation=tf.nn.sigmoid, name="FC3")
-            # [?, 784]
+            self.mask()
+            self.decoder()

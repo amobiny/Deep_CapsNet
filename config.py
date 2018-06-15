@@ -30,13 +30,13 @@ flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; w
 flags.DEFINE_integer('num_tr', 55000, 'Total number of training images')
 flags.DEFINE_integer('height', 28, 'Network input height size')
 flags.DEFINE_integer('width', 28, 'Network input width size')
-flags.DEFINE_integer('depth', 28, 'Network input depth size')
 flags.DEFINE_integer('channel', 1, 'Network input channel size')
 
 # Directories
-flags.DEFINE_string('logdir', './log_dir/', 'Logs directory')
-flags.DEFINE_string('modeldir', './model_dir', 'Model directory')
-flags.DEFINE_string('savedir', './result', 'Result saving directory')
+flags.DEFINE_string('run_name', 'run1', 'Run name')
+flags.DEFINE_string('logdir', './Results/log_dir/', 'Logs directory')
+flags.DEFINE_string('modeldir', './Results/model_dir/', 'Saved models directory')
+flags.DEFINE_string('savedir', './Results/result/', 'Results saving directory')
 
 flags.DEFINE_string('model_name', 'model', 'Model file name')
 flags.DEFINE_integer('reload_step', 0, 'Reload step to continue training')
