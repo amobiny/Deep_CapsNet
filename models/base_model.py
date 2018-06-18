@@ -1,7 +1,7 @@
 import tensorflow as tf
 import os
 import numpy as np
-from DataLoader import DataLoader
+from MNISTLoader import DataLoader
 
 
 class BaseModel(object):
@@ -127,36 +127,29 @@ class BaseModel(object):
         else:
             print('----> Start Training')
         data_reader = DataLoader(self.conf)
-        num_tr_step = self.conf.num_tr // self.conf.batch_size
-        global_step = 0
-        for epoch in range(self.conf.max_epoch+1):
-            data_reader.randomize()
-            for train_step in range(num_tr_step):
-                print('Step: {}'.format(train_step))
-                start = train_step * self.conf.batch_size
-                end = (train_step + 1) * self.conf.batch_size
-                if train_step % self.conf.SUMMARY_FREQ == 0:
-                    x_batch, y_batch = data_reader.next_batch(start, end)
-                    feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                    _, loss, acc, summary = self.sess.run([self.train_op, self.total_loss, self.accuracy, self.merged_summary],
-                                                          feed_dict=feed_dict)
-                    self.save_summary(summary, train_step + self.conf.reload_step)
-                    print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
-                else:
-                    x_batch, y_batch = data_reader.next_batch(start, end)
-                    feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                    self.sess.run(self.train_op, feed_dict=feed_dict)
-                if train_step % self.conf.VAL_FREQ == 0:
-                    x_val, y_val = data_reader.get_validation()
-                    feed_dict = {self.x: x_val, self.y: y_val}
-                    loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
-                                                       feed_dict=feed_dict)
-                    self.save_summary(summary, global_step + self.conf.reload_step)
-                    print('-' * 30 + 'Validation' + '-' * 30)
-                    print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
-                    print('-' * 70)
-                global_step += 1
-            self.save(epoch + self.conf.reload_epoch)
+        for train_step in range(1, self.conf.max_step + 1):
+            print('Step: {}'.format(train_step))
+            if train_step % self.conf.SUMMARY_FREQ == 0:
+                x_batch, y_batch = data_reader.next_batch()
+                feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
+                _, loss, acc, summary = self.sess.run([self.train_op, self.total_loss, self.accuracy, self.merged_summary],
+                                                      feed_dict=feed_dict)
+                self.save_summary(summary, train_step + self.conf.reload_step)
+                print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
+            else:
+                x_batch, y_batch = data_reader.next_batch()
+                feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
+                self.sess.run(self.train_op, feed_dict=feed_dict)
+            if train_step % self.conf.VAL_FREQ == 0:
+                x_val, y_val = data_reader.get_validation()
+                feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
+                loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary], feed_dict=feed_dict)
+                self.save_summary(summary, train_step + self.conf.reload_step)
+                print('-' * 30 + 'Validation' + '-' * 30)
+                print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
+                print('-' * 70)
+            if train_step % self.conf.SAVE_FREQ == 0:
+                self.save(train_step + self.conf.reload_step)
 
     def test(self):
         pass

@@ -5,7 +5,7 @@ flags = tf.app.flags
 flags.DEFINE_string('mode', 'train', 'train or test')
 
 # Training logs
-flags.DEFINE_integer('max_epoch', 100, '# of step for training')
+flags.DEFINE_integer('max_step', 100000, '# of step for training')
 flags.DEFINE_integer('SAVE_FREQ', 1000, 'Number of steps to save model')
 flags.DEFINE_integer('SUMMARY_FREQ', 10, 'Number of step to save summary')
 flags.DEFINE_integer('VAL_FREQ', 10, 'Number of step to evaluate the network on Validation data')

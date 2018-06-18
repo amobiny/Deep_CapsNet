@@ -10,20 +10,19 @@ class DataLoader(object):
         self.cfg = cfg
         self.augment = cfg.data_augment
         self.max_angle = cfg.max_angle
-        self.batch_size = cfg.batch_size
-        self.num_tr = cfg.num_tr
         self.mnist = input_data.read_data_sets("data/mnist", one_hot=True)
         self.x_train, self.y_train = self.mnist.train.images, self.mnist.train.labels
 
-    def next_batch(self, start, end):
-        x = self.x_train[start:end]
-        y = self.y_train[start:end]
+    def next_batch(self):
+        x, y = self.mnist.train.next_batch(self.cfg.batch_size)
+        x = x.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
         if self.augment:
             x = random_rotation_2d(x, self.cfg.max_angle)
         return x, y
 
     def get_validation(self):
         x_valid, y_valid = self.mnist.validation.images, self.mnist.validation.labels
+        x_valid = x_valid.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
         return x_valid, y_valid
 
     def randomize(self):
