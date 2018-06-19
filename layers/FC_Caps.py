@@ -26,11 +26,6 @@ class FCCapsuleLayer(layers.Layer):
                                         self.caps_dim, self.in_caps_dim],
                                  initializer=self.kernel_initializer,
                                  name='W')
-
-        self.b = self.add_weight(shape=[1, 1, self.num_caps, self.caps_dim],
-                                 initializer=initializers.constant(0.1),
-                                 name='b')
-
         self.built = True
 
     def call(self, input_tensor, training=None):

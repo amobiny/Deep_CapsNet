@@ -105,3 +105,4 @@ venv.bak/
 MNIST_data/
 .idea
 Results/
+data/

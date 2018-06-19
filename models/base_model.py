@@ -5,7 +5,6 @@ from MNISTLoader import DataLoader
 
 
 class BaseModel(object):
-
     def __init__(self, sess, conf):
         self.sess = sess
         self.conf = conf
@@ -27,7 +26,7 @@ class BaseModel(object):
 
             y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
             # [?, 1]
-            self.y_pred = tf.reshape(y_prob_argmax, shape=())
+            self.y_pred = tf.squeeze(y_prob_argmax)
             # [?] (predicted labels)
             y_pred_ohe = tf.one_hot(self.y_pred, depth=self.conf.num_cls)
             # [?, 10] (one-hot-encoded predicted labels)
@@ -38,7 +37,7 @@ class BaseModel(object):
                                       name="reconstruction_targets")
             # [?, 10]
 
-            self.output_masked = tf.multiply(tf.squeeze(self.digit_caps), tf.expand_dims(reconst_targets, -1))
+            self.output_masked = tf.multiply(self.digit_caps, tf.expand_dims(reconst_targets, -1))
             # [?, 10, 16]
 
     def loss_func(self):
@@ -46,32 +45,31 @@ class BaseModel(object):
         with tf.variable_scope('Margin_Loss'):
             # max(0, m_plus-||v_c||)^2
             present_error = tf.square(tf.maximum(0., self.conf.m_plus - self.v_length))
-            # [?, 10, 1, 1]
+            # [?, 10, 1]
 
             # max(0, ||v_c||-m_minus)^2
             absent_error = tf.square(tf.maximum(0., self.v_length - self.conf.m_minus))
-            # [?, 10, 1, 1]
+            # [?, 10, 1]
 
-            # reshape: [?, 10, 1, 1] => [?, 10]
-            present_error = tf.reshape(present_error, shape=(self.conf.batch_size, -1))
-            absent_error = tf.reshape(absent_error, shape=(self.conf.batch_size, -1))
+            # reshape: [?, 10, 1] => [?, 10]
+            present_error = tf.squeeze(present_error)
+            absent_error = tf.squeeze(absent_error)
 
             T_c = self.y
-            # [batch_size, 10]
+            # [?, 10]
             L_c = T_c * present_error + self.conf.lambda_val * (1 - T_c) * absent_error
-            # [batch_size, 10]
+            # [?, 10]
             self.margin_loss = tf.reduce_mean(tf.reduce_sum(L_c, axis=1), name="margin_loss")
 
         # 2. The reconstruction loss
         with tf.variable_scope('Reconstruction_Loss'):
-            orgin = tf.reshape(self.x, shape=(self.conf.batch_size, -1))
+            orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width))
             squared = tf.square(self.decoder_output - orgin)
             self.reconstruction_err = tf.reduce_mean(squared)
 
         # 3. Total loss
         with tf.variable_scope('Total_Loss'):
             self.total_loss = self.margin_loss + self.conf.alpha * self.reconstruction_err
-
 
     def accuracy_func(self):
         with tf.variable_scope('Accuracy'):
@@ -97,8 +95,8 @@ class BaseModel(object):
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()
         self.saver = tf.train.Saver(var_list=trainable_vars, max_to_keep=1000)
-        self.train_writer = tf.summary.FileWriter(self.conf.logdir+self.conf.run_name+'/train/', self.sess.graph)
-        self.valid_writer = tf.summary.FileWriter(self.conf.logdir+self.conf.run_name+'/valid/')
+        self.train_writer = tf.summary.FileWriter(self.conf.logdir + self.conf.run_name + '/train/', self.sess.graph)
+        self.valid_writer = tf.summary.FileWriter(self.conf.logdir + self.conf.run_name + '/valid/')
         self.configure_summary()
         print('*' * 50)
         print('Total number of trainable parameters: {}'.
@@ -113,12 +111,13 @@ class BaseModel(object):
                         tf.summary.image('reconstructed', recon_img)]
         self.merged_summary = tf.summary.merge(summary_list)
 
-    def save_summary(self, summary, step):
+    def save_summary(self, summary, step, mode):
         print('----> Summarizing at step {}'.format(step))
-        if self.mask_with_labels:
+        if mode == 'train':
             self.train_writer.add_summary(summary, step)
-        else:
+        elif mode == 'valid':
             self.valid_writer.add_summary(summary, step)
+
 
     def train(self):
         if self.conf.reload_step > 0:
@@ -132,9 +131,10 @@ class BaseModel(object):
             if train_step % self.conf.SUMMARY_FREQ == 0:
                 x_batch, y_batch = data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                _, loss, acc, summary = self.sess.run([self.train_op, self.total_loss, self.accuracy, self.merged_summary],
-                                                      feed_dict=feed_dict)
-                self.save_summary(summary, train_step + self.conf.reload_step)
+                _, loss, acc, summary = self.sess.run(
+                    [self.train_op, self.total_loss, self.accuracy, self.merged_summary],
+                    feed_dict=feed_dict)
+                self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
                 print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
             else:
                 x_batch, y_batch = data_reader.next_batch()
@@ -143,8 +143,9 @@ class BaseModel(object):
             if train_step % self.conf.VAL_FREQ == 0:
                 x_val, y_val = data_reader.get_validation()
                 feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
-                loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary], feed_dict=feed_dict)
-                self.save_summary(summary, train_step + self.conf.reload_step)
+                loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
+                                                   feed_dict=feed_dict)
+                self.save_summary(summary, train_step + self.conf.reload_step, mode='valid')
                 print('-' * 30 + 'Validation' + '-' * 30)
                 print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
                 print('-' * 70)

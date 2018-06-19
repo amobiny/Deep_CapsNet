@@ -23,14 +23,14 @@ class CapsNet(BaseModel):
             conv1_reshaped = layers.Reshape((H.value, W.value, 1, C.value))(conv1)
 
             # Layer 2: Convolutional Capsule
-            primary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=2, caps_dim=16, strides=2, padding='same',
-                                            routings=1, name='primarycaps')(conv1_reshaped)
+            primary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=2, caps_dim=8, strides=2, padding='same',
+                                            routings=3, name='primarycaps')(conv1_reshaped)
 
             # Layer 3: Convolutional Capsule
-            secondary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=16, strides=1, padding='same',
+            secondary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=8, strides=2, padding='same',
                                               routings=3, name='secondarycaps')(primary_caps)
             _, H, W, D, dim = secondary_caps.get_shape()
-            sec_cap_reshaped = layers.Reshape((H.value * W.value * D.value, C.value))(secondary_caps)
+            sec_cap_reshaped = layers.Reshape((H.value * W.value * D.value, dim.value))(secondary_caps)
 
             # Layer 4: Fully-connected Capsule
             self.digit_caps = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
