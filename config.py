@@ -8,7 +8,7 @@ flags.DEFINE_string('mode', 'train', 'train or test')
 flags.DEFINE_integer('max_step', 100000, '# of step for training')
 flags.DEFINE_integer('SAVE_FREQ', 1000, 'Number of steps to save model')
 flags.DEFINE_integer('SUMMARY_FREQ', 100, 'Number of step to save summary')
-flags.DEFINE_integer('VAL_FREQ', 1000, 'Number of step to evaluate the network on Validation data')
+flags.DEFINE_integer('VAL_FREQ', 500, 'Number of step to evaluate the network on Validation data')
 
 # Hyper-parameters
 # For margin loss
@@ -19,7 +19,7 @@ flags.DEFINE_float('lambda_val', 0.5, 'Down-weighting parameter for the absent c
 flags.DEFINE_float('alpha', 0.0005, 'Regularization coefficient to scale down the reconstruction loss')
 # For training
 flags.DEFINE_integer('batch_size', 128, 'training batch size')
-flags.DEFINE_integer('val_batch_size', 128, 'validation batch size')
+flags.DEFINE_integer('val_batch_size', 100, 'validation batch size')
 flags.DEFINE_float('init_lr', 1e-3, 'Initial learning rate')
 flags.DEFINE_float('lr_min', 1e-5, 'Minimum learning rate')
 

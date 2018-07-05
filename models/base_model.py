@@ -70,11 +70,14 @@ class BaseModel(object):
         # 3. Total loss
         with tf.variable_scope('Total_Loss'):
             self.total_loss = self.margin_loss + self.conf.alpha * self.reconstruction_err
+            self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
+
 
     def accuracy_func(self):
         with tf.variable_scope('Accuracy'):
             correct_prediction = tf.equal(tf.to_int32(tf.argmax(self.y, axis=1)), self.y_pred)
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            self.mean_accuracy, self.mean_accuracy_op = tf.metrics.mean(accuracy)
 
     def configure_network(self):
         self.loss_func()
@@ -105,8 +108,8 @@ class BaseModel(object):
 
     def configure_summary(self):
         recon_img = tf.reshape(self.decoder_output, shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
-        summary_list = [tf.summary.scalar('Loss/margin_loss', self.margin_loss),
-                        tf.summary.scalar('Loss/reconstruction_loss', self.reconstruction_err),
+        summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
+                        tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
                         tf.summary.image('original', self.x),
                         tf.summary.image('reconstructed', recon_img)]
         self.merged_summary = tf.summary.merge(summary_list)
@@ -117,57 +120,66 @@ class BaseModel(object):
             self.train_writer.add_summary(summary, step)
         elif mode == 'valid':
             self.valid_writer.add_summary(summary, step)
+        self.sess.run(tf.local_variables_initializer())
 
     def train(self):
+        self.sess.run(tf.local_variables_initializer())
+        self.data_reader = DataLoader(self.conf)
+        self.data_reader.get_validation()
         if self.conf.reload_step > 0:
             self.reload(self.conf.reload_step)
+            print('*' * 50)
             print('----> Continue Training from step #{}'.format(self.conf.reload_step))
+            print('*' * 50)
         else:
+            print('*' * 50)
             print('----> Start Training')
-        self.data_reader = DataLoader(self.conf)
+            print('*' * 50)
+        self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
         for train_step in range(1, self.conf.max_step + 1):
             if train_step % self.conf.SUMMARY_FREQ == 0:
-                x_batch, y_batch = self.data_reader.next_batch()
+                x_batch, y_batch = self.data_reader.next_random_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                _, loss, acc, summary = self.sess.run(
-                    [self.train_op, self.total_loss, self.accuracy, self.merged_summary],
-                    feed_dict=feed_dict)
+                _, _, _, summary = self.sess.run([self.train_op,
+                                                  self.mean_loss_op,
+                                                  self.mean_accuracy_op,
+                                                  self.merged_summary], feed_dict=feed_dict)
+                loss, acc = self.sess.run([self.mean_loss, self.mean_accuracy])
                 self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
                 print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
             else:
-                x_batch, y_batch = self.data_reader.next_batch()
+                x_batch, y_batch = self.data_reader.next_random_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                self.sess.run(self.train_op, feed_dict=feed_dict)
+                self.sess.run([self.train_op, self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
             if train_step % self.conf.VAL_FREQ == 0:
-                self.evaluate()
-                self.save_summary(summary, train_step + self.conf.reload_step, mode='valid')
-                print('-' * 30 + 'Validation' + '-' * 30)
-                print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
-                print('-' * 70)
+                self.evaluate(train_step)
+
             if train_step % self.conf.SAVE_FREQ == 0:
                 self.save(train_step + self.conf.reload_step)
 
-    def evaluate(self):
-        if not self.data_reader.x_valid:
-            self.data_reader.get_validation()
-            self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
-        all_acc = np.array([])
-        all_loss = np.array([])
+    def evaluate(self, train_step):
+        self.sess.run(tf.local_variables_initializer())
         for step in range(self.num_val_batch):
             start = step * self.conf.val_batch_size
             end = (step + 1) * self.conf.val_batch_size
             x_val, y_val = self.data_reader.next_batch(start, end)
             feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
-            batch_loss, batch_acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
-                                                           feed_dict=feed_dict)
-            all_acc = np.append(all_acc, batch_acc)
-            all_loss = np.append(all_loss, batch_loss)
+            self.sess.run([self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
+
+        summary_valid = self.sess.run(self.merged_summary, feed_dict=feed_dict)
+        valid_loss, valid_acc = self.sess.run([self.mean_loss, self.mean_accuracy])
+        self.save_summary(summary_valid, train_step + self.conf.reload_step, mode='valid')
+        print('-' * 30 + 'Validation' + '-' * 30)
+        print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step,valid_loss, valid_acc))
+        print('-' * 70)
 
     def test(self):
         pass
 
     def save(self, step):
+        print('*' * 50)
         print('----> Saving the model at step #{0}'.format(step))
+        print('*' * 50)
         checkpoint_path = os.path.join(
             self.conf.modeldir, self.conf.model_name)
         self.saver.save(self.sess, checkpoint_path, global_step=step)
