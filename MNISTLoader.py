@@ -13,7 +13,7 @@ class DataLoader(object):
         self.mnist = input_data.read_data_sets("data/mnist", one_hot=True)
         self.x_train, self.y_train = self.mnist.train.images, self.mnist.train.labels
 
-    def next_batch(self):
+    def next_random_batch(self):
         x, y = self.mnist.train.next_batch(self.cfg.batch_size)
         x = x.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
         if self.augment:
@@ -21,9 +21,13 @@ class DataLoader(object):
         return x, y
 
     def get_validation(self):
-        x_valid, y_valid = self.mnist.validation.images, self.mnist.validation.labels
-        x_valid = x_valid.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
-        return x_valid, y_valid
+        x_valid, self.y_valid = self.mnist.validation.images, self.mnist.validation.labels
+        self.x_valid = x_valid.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
+
+    def next_batch(self, start, end):
+        x = self.x_valid[start:end]
+        y = self.y_valid[start:end]
+        return x, y
 
     def randomize(self):
         """ Randomizes the order of data samples and their corresponding labels"""

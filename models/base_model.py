@@ -21,7 +21,7 @@ class BaseModel(object):
     def mask(self):
         with tf.variable_scope('Masking'):
             epsilon = 1e-9
-            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keep_dims=True) + epsilon)
+            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keepdims=True) + epsilon)
             # [?, 10, 1]
 
             y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
@@ -112,12 +112,11 @@ class BaseModel(object):
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):
-        print('----> Summarizing at step {}'.format(step))
+        # print('----> Summarizing at step {}'.format(step))
         if mode == 'train':
             self.train_writer.add_summary(summary, step)
         elif mode == 'valid':
             self.valid_writer.add_summary(summary, step)
-
 
     def train(self):
         if self.conf.reload_step > 0:
@@ -125,11 +124,10 @@ class BaseModel(object):
             print('----> Continue Training from step #{}'.format(self.conf.reload_step))
         else:
             print('----> Start Training')
-        data_reader = DataLoader(self.conf)
+        self.data_reader = DataLoader(self.conf)
         for train_step in range(1, self.conf.max_step + 1):
-            print('Step: {}'.format(train_step))
             if train_step % self.conf.SUMMARY_FREQ == 0:
-                x_batch, y_batch = data_reader.next_batch()
+                x_batch, y_batch = self.data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                 _, loss, acc, summary = self.sess.run(
                     [self.train_op, self.total_loss, self.accuracy, self.merged_summary],
@@ -137,20 +135,33 @@ class BaseModel(object):
                 self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
                 print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
             else:
-                x_batch, y_batch = data_reader.next_batch()
+                x_batch, y_batch = self.data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                 self.sess.run(self.train_op, feed_dict=feed_dict)
             if train_step % self.conf.VAL_FREQ == 0:
-                x_val, y_val = data_reader.get_validation()
-                feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
-                loss, acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
-                                                   feed_dict=feed_dict)
+                self.evaluate()
                 self.save_summary(summary, train_step + self.conf.reload_step, mode='valid')
                 print('-' * 30 + 'Validation' + '-' * 30)
                 print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step, loss, acc))
                 print('-' * 70)
             if train_step % self.conf.SAVE_FREQ == 0:
                 self.save(train_step + self.conf.reload_step)
+
+    def evaluate(self):
+        if not self.data_reader.x_valid:
+            self.data_reader.get_validation()
+            self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
+        all_acc = np.array([])
+        all_loss = np.array([])
+        for step in range(self.num_val_batch):
+            start = step * self.conf.val_batch_size
+            end = (step + 1) * self.conf.val_batch_size
+            x_val, y_val = self.data_reader.next_batch(start, end)
+            feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
+            batch_loss, batch_acc, summary = self.sess.run([self.total_loss, self.accuracy, self.merged_summary],
+                                                           feed_dict=feed_dict)
+            all_acc = np.append(all_acc, batch_acc)
+            all_loss = np.append(all_loss, batch_loss)
 
     def test(self):
         pass

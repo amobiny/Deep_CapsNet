@@ -1,6 +1,7 @@
 import tensorflow as tf
 from config import args
 from models.CapsNet import CapsNet
+from models.Original_CapsNet import Orig_CapsNet
 
 import os
 
@@ -10,7 +11,7 @@ def main(_):
         print('invalid mode: ', args.mode)
         print("Please input a mode: train, test, or predict")
     else:
-        model = CapsNet(tf.Session(), args)
+        model = Orig_CapsNet(tf.Session(), args)
         # model.count_params()
         if not os.path.exists(args.modeldir+args.run_name):
             os.makedirs(args.modeldir+args.run_name)

@@ -7,7 +7,7 @@ flags.DEFINE_string('mode', 'train', 'train or test')
 # Training logs
 flags.DEFINE_integer('max_step', 100000, '# of step for training')
 flags.DEFINE_integer('SAVE_FREQ', 1000, 'Number of steps to save model')
-flags.DEFINE_integer('SUMMARY_FREQ', 10, 'Number of step to save summary')
+flags.DEFINE_integer('SUMMARY_FREQ', 100, 'Number of step to save summary')
 flags.DEFINE_integer('VAL_FREQ', 1000, 'Number of step to evaluate the network on Validation data')
 
 # Hyper-parameters
@@ -16,14 +16,15 @@ flags.DEFINE_float('m_plus', 0.9, 'm+ parameter')
 flags.DEFINE_float('m_minus', 0.1, 'm- parameter')
 flags.DEFINE_float('lambda_val', 0.5, 'Down-weighting parameter for the absent class')
 # For reconstruction loss
-flags.DEFINE_float('--alpha', 0.0005, 'Regularization coefficient to scale down the reconstruction loss')
+flags.DEFINE_float('alpha', 0.0005, 'Regularization coefficient to scale down the reconstruction loss')
 # For training
-flags.DEFINE_integer('batch_size', 16, 'training batch size')
+flags.DEFINE_integer('batch_size', 128, 'training batch size')
+flags.DEFINE_integer('val_batch_size', 128, 'validation batch size')
 flags.DEFINE_float('init_lr', 1e-3, 'Initial learning rate')
 flags.DEFINE_float('lr_min', 1e-5, 'Minimum learning rate')
 
 # data
-flags.DEFINE_boolean('data_augment', True, 'Adds augmentation to data')
+flags.DEFINE_boolean('data_augment', False, 'Adds augmentation to data')
 flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; when applying augmentation')
 flags.DEFINE_integer('num_tr', 55000, 'Total number of training images')
 flags.DEFINE_integer('height', 28, 'Network input height size')
