@@ -29,10 +29,7 @@ class FCCapsuleLayer(layers.Layer):
         self.built = True
 
     def call(self, input_tensor, training=None):
-        inputs_expand = K.expand_dims(input_tensor, 1)
-        inputs_tiled = K.tile(inputs_expand, [1, self.num_caps, 1, 1])
-        inputs_hat = K.map_fn(lambda x: K.batch_dot(x, self.W, [2, 3]), elems=inputs_tiled)
-
+        inputs_hat = self.get_predictions(input_tensor)
         b = tf.zeros(shape=[K.shape(inputs_hat)[0], self.num_caps, self.num_in_caps])
 
         assert self.routings > 0, 'routing should be > 0.'
@@ -54,3 +51,9 @@ class FCCapsuleLayer(layers.Layer):
         }
         base_config = super(FCCapsuleLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+    def get_predictions(self, input_tensor):
+        inputs_expand = K.expand_dims(input_tensor, 1)
+        inputs_tiled = K.tile(inputs_expand, [1, self.num_caps, 1, 1])
+        inputs_hat = K.map_fn(lambda x: K.batch_dot(x, self.W, [2, 3]), elems=inputs_tiled)
+        return inputs_hat

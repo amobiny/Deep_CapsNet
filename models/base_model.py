@@ -21,7 +21,7 @@ class BaseModel(object):
     def mask(self):
         with tf.variable_scope('Masking'):
             epsilon = 1e-9
-            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keepdims=True) + epsilon)
+            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keep_dims=True) + epsilon)
             # [?, 10, 1]
 
             y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
