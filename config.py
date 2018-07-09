@@ -27,9 +27,9 @@ flags.DEFINE_float('lr_min', 1e-5, 'Minimum learning rate')
 flags.DEFINE_boolean('data_augment', False, 'Adds augmentation to data')
 flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; when applying augmentation')
 flags.DEFINE_integer('num_tr', 55000, 'Total number of training images')
-flags.DEFINE_integer('height', 32, 'Network input height size')
-flags.DEFINE_integer('width', 32, 'Network input width size')
-flags.DEFINE_integer('depth', 32, 'Network input depth size (in the case of 3D input images)')
+flags.DEFINE_integer('height', 28, 'Network input height size')
+flags.DEFINE_integer('width', 28, 'Network input width size')
+flags.DEFINE_integer('depth', 28, 'Network input depth size (in the case of 3D input images)')
 flags.DEFINE_integer('channel', 1, 'Network input channel size')
 
 # Directories
@@ -42,7 +42,7 @@ flags.DEFINE_string('model_name', 'model', 'Model file name')
 flags.DEFINE_integer('reload_step', 0, 'Reload step to continue training')
 
 # network architecture
-flags.DEFINE_integer('num_cls', 2, 'Number of output classes')
+flags.DEFINE_integer('num_cls', 10, 'Number of output classes')
 flags.DEFINE_integer('digit_caps_dim', 16, 'Dimension of the DigitCaps')
 flags.DEFINE_integer('h1', 512, 'Number of hidden units of the first FC layer of the reconstruction network')
 flags.DEFINE_integer('h2', 1024, 'Number of hidden units of the second FC layer of the reconstruction network')

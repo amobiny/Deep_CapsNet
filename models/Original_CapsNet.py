@@ -28,8 +28,8 @@ class Orig_CapsNet(BaseModel):
             caps1_output = squash(primary_caps_reshaped)
 
             # Layer 3: Digit Capsule Layer; Here is where the routing takes place
-            self.digit_caps, _ = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
-                                                routings=3, name='digit_caps')(caps1_output)
+            self.digit_caps = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
+                                             routings=3, name='digit_caps')(caps1_output)
             # [?, 10, 16]
 
             self.mask()

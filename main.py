@@ -12,7 +12,7 @@ def main(_):
         print('invalid mode: ', args.mode)
         print("Please input a mode: train, test, or predict")
     else:
-        model = Fast_CapsNet_3D(tf.Session(), args)
+        model = CapsNet(tf.Session(), args)
         # model = Orig_CapsNet(tf.Session(), args)
         # model.count_params()
         if not os.path.exists(args.modeldir+args.run_name):
