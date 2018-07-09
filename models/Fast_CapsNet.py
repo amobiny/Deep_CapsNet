@@ -33,12 +33,13 @@ class Fast_CapsNet_3D(BaseModel):
             # Layer 3: Digit Capsule Layer; Here is where the routing takes place
             digitcaps_layer = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
                                              routings=3, name='digit_caps')
-            self.digit_caps = digitcaps_layer(caps1_output)            # [?, 10, 16]
-            u_hat = digitcaps_layer.get_predictions(caps1_output)      # [?, 2, 512, 16]
+            self.digit_caps = digitcaps_layer(caps1_output)  # [?, 10, 16]
+            u_hat = digitcaps_layer.get_predictions(caps1_output)  # [?, 2, 512, 16]
             u_hat_shape = u_hat.get_shape().as_list()
             self.img_s = int(round(u_hat_shape[2] ** (1. / 3)))
-            u_hat = layers.Reshape((self.conf.num_cls, self.img_s, self.img_s, self.img_s, 1, self.conf.digit_caps_dim))(u_hat)
-            self.u_hat = tf.transpose(u_hat, perm=[1, 0, 2, 3, 4, 5, 6])
+            self.u_hat = layers.Reshape(
+                (self.conf.num_cls, self.img_s, self.img_s, self.img_s, 1, self.conf.digit_caps_dim))(u_hat)
+            # self.u_hat = tf.transpose(u_hat, perm=[1, 0, 2, 3, 4, 5, 6])
             # u_hat: [2, ?, 8, 8, 8, 1, 16]
             self.decoder()
 
@@ -64,15 +65,17 @@ class Fast_CapsNet_3D(BaseModel):
             reconst_targets = tf.tile(reconst_targets, (1, self.img_s, self.img_s, self.img_s, 1))
             # [batch_size, 8, 8, 8, 2]
 
-            u_list = tf.unstack(self.u_hat, axis=1)
-            ind_list = tf.unstack(indices, axis=0)
-            a = tf.stack([tf.gather_nd(mat, [[ind]]) for mat, ind in zip(u_list, ind_list)])
-            # [batch_size, 1, 8, 8, 8, 1, 16]
-            feat = tf.reshape(tf.transpose(a, perm=[0, 2, 3, 4, 1, 5, 6]),
-                              (-1, self.img_s, self.img_s, self.img_s, self.conf.digit_caps_dim))
-            # [batch_size, 8, 8, 8, 16]
+            num_partitions = self.conf.batch_size
+            partitions = tf.range(num_partitions)
+            u_list = tf.dynamic_partition(self.u_hat, partitions, num_partitions, name='uhat_dynamic_unstack')
+            ind_list = tf.dynamic_partition(indices, partitions, num_partitions, name='ind_dynamic_unstack')
+
+            a = tf.stack([tf.gather_nd(tf.squeeze(mat, axis=0), [[ind]]) for mat, ind in zip(u_list, ind_list)])
+            # [?, 1, 8, 8, 8, 1, 16]
+            feat = tf.reshape(a, (-1, self.img_s, self.img_s, self.img_s, self.conf.digit_caps_dim))
+            # [?, 8, 8, 8, 16]
             self.cube = tf.concat([feat, reconst_targets], axis=-1)
-            # [batch_size, 8, 8, 8, 18]
+            # [?, 8, 8, 8, 18]
 
             res1 = Deconv3D(self.cube,
                             filter_size=4,
@@ -86,3 +89,44 @@ class Fast_CapsNet_3D(BaseModel):
                                            stride=2,
                                            layer_name="deconv_2",
                                            out_shape=[self.conf.batch_size, 32, 32, 32, 1])
+
+    def train(self):
+        self.sess.run(tf.local_variables_initializer())
+        if self.conf.data == 'mnist':
+            from MNISTLoader import DataLoader
+        elif self.conf.data == 'nodule':
+            from DataLoader import DataLoader
+
+        self.data_reader = DataLoader(self.conf)
+        self.data_reader.get_validation()
+        if self.conf.reload_step > 0:
+            self.reload(self.conf.reload_step)
+            print('*' * 50)
+            print('----> Continue Training from step #{}'.format(self.conf.reload_step))
+            print('*' * 50)
+        else:
+            print('*' * 50)
+            print('----> Start Training')
+            print('*' * 50)
+        self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
+        for epoch in range(self.conf.max_epoch):
+            self.data_reader.randomize()
+            if train_step % self.conf.SUMMARY_FREQ == 0:
+                x_batch, y_batch = self.data_reader.next_batch()
+                feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
+                _, _, _, summary = self.sess.run([self.train_op,
+                                                  self.mean_loss_op,
+                                                  self.mean_accuracy_op,
+                                                  self.merged_summary], feed_dict=feed_dict)
+                loss, acc = self.sess.run([self.mean_loss, self.mean_accuracy])
+                self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
+                print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
+            else:
+                x_batch, y_batch = self.data_reader.next_batch()
+                feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
+                self.sess.run([self.train_op, self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
+            if train_step % self.conf.VAL_FREQ == 0:
+                self.evaluate(train_step)
+
+            if train_step % self.conf.SAVE_FREQ == 0:
+                self.save(train_step + self.conf.reload_step)

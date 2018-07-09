@@ -1,7 +1,6 @@
 import tensorflow as tf
 import os
 import numpy as np
-from MNISTLoader import DataLoader
 
 
 class BaseModel(object):
@@ -72,7 +71,6 @@ class BaseModel(object):
             self.total_loss = self.margin_loss + self.conf.alpha * self.reconstruction_err
             self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
 
-
     def accuracy_func(self):
         with tf.variable_scope('Accuracy'):
             correct_prediction = tf.equal(tf.to_int32(tf.argmax(self.y, axis=1)), self.y_pred)
@@ -124,6 +122,11 @@ class BaseModel(object):
 
     def train(self):
         self.sess.run(tf.local_variables_initializer())
+        if self.conf.data == 'mnist':
+            from MNISTLoader import DataLoader
+        elif self.conf.data == 'nodule':
+            from DataLoader import DataLoader
+
         self.data_reader = DataLoader(self.conf)
         self.data_reader.get_validation()
         if self.conf.reload_step > 0:
@@ -138,7 +141,7 @@ class BaseModel(object):
         self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
         for train_step in range(1, self.conf.max_step + 1):
             if train_step % self.conf.SUMMARY_FREQ == 0:
-                x_batch, y_batch = self.data_reader.next_random_batch()
+                x_batch, y_batch = self.data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                 _, _, _, summary = self.sess.run([self.train_op,
                                                   self.mean_loss_op,
@@ -148,7 +151,7 @@ class BaseModel(object):
                 self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
                 print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
             else:
-                x_batch, y_batch = self.data_reader.next_random_batch()
+                x_batch, y_batch = self.data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
                 self.sess.run([self.train_op, self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
             if train_step % self.conf.VAL_FREQ == 0:
@@ -162,7 +165,7 @@ class BaseModel(object):
         for step in range(self.num_val_batch):
             start = step * self.conf.val_batch_size
             end = (step + 1) * self.conf.val_batch_size
-            x_val, y_val = self.data_reader.next_batch(start, end)
+            x_val, y_val = self.data_reader.next_batch(start, end, mode='valid')
             feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
             self.sess.run([self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
 

@@ -25,7 +25,7 @@ def bias_variable(name, shape):
                            initializer=initial)
 
 
-def Deconv3D(inputs, filter_size, num_filters, layer_name, stride, out_shape, activation=tf.nn.relu):
+def Deconv3D(inputs, filter_size, num_filters, layer_name, stride, out_shape=None, activation=tf.nn.relu):
     """
     Create a 3D transposed-convolution layer
     :param inputs: input array
@@ -40,10 +40,9 @@ def Deconv3D(inputs, filter_size, num_filters, layer_name, stride, out_shape, ac
     input_shape = inputs.get_shape().as_list()
     with tf.variable_scope(layer_name):
         kernel_shape = [filter_size, filter_size, filter_size, num_filters, input_shape[-1]]
-        if not len(out_shape.get_shape().as_list()):  # if out_shape is not provided
-            out_shape = [input_shape[0]] + list(map(lambda x: x * 2, input_shape[1:-1])) + [num_filters]
+        # if not len(out_shape.get_shape().as_list()):  # if out_shape is not provided
+        #     out_shape = [input_shape[0]] + list(map(lambda x: x * 2, input_shape[1:-1])) + [num_filters]
         weights = weight_variable(layer_name, shape=kernel_shape)
-        # biases = bias_variable(layer_name, [num_filters])
         layer = tf.nn.conv3d_transpose(inputs,
                                        filter=weights,
                                        output_shape=out_shape,

@@ -15,7 +15,7 @@ class CapsNet(BaseModel):
         # Building network...
         with tf.variable_scope('CapsNet'):
             # Layer 1: A 2D conv layer
-            conv1 = layers.Conv2D(filters=16, kernel_size=5, strides=1,
+            conv1 = layers.Conv2D(filters=64, kernel_size=5, strides=1,
                                   padding='same', activation='relu', name='conv1')(x)
 
             # Reshape layer to be 1 capsule x caps_dim(=filters)
@@ -24,7 +24,7 @@ class CapsNet(BaseModel):
 
             # Layer 2: Convolutional Capsule
             primary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=16, strides=2, padding='same',
-                                            routings=1, name='primarycaps')(conv1_reshaped)
+                                            routings=3, name='primarycaps')(conv1_reshaped)
 
             # Layer 3: Convolutional Capsule
             # secondary_caps = ConvCapsuleLayer(kernel_size=5, num_caps=4, caps_dim=8, strides=2, padding='same',
@@ -34,7 +34,7 @@ class CapsNet(BaseModel):
 
             # Layer 4: Fully-connected Capsule
             self.digit_caps = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
-                                             routings=1, name='secondarycaps')(sec_cap_reshaped)
+                                             routings=3, name='secondarycaps')(sec_cap_reshaped)
             # [?, 10, 16]
 
             self.mask()
