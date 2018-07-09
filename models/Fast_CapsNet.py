@@ -90,6 +90,17 @@ class Fast_CapsNet_3D(BaseModel):
                                            layer_name="deconv_2",
                                            out_shape=[self.conf.batch_size, 32, 32, 32, 1])
 
+    def configure_summary(self):
+        recon_img = tf.reshape(self.decoder_output[:, :, :, 16, :],
+                               shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
+        orig_image = tf.reshape(self.x[:, :, :, 16, :],
+                                shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
+        summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
+                        tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
+                        tf.summary.image('original', orig_image),
+                        tf.summary.image('reconstructed', recon_img)]
+        self.merged_summary = tf.summary.merge(summary_list)
+
     def train(self):
         self.sess.run(tf.local_variables_initializer())
         if self.conf.data == 'mnist':
@@ -108,25 +119,42 @@ class Fast_CapsNet_3D(BaseModel):
             print('*' * 50)
             print('----> Start Training')
             print('*' * 50)
+        self.num_train_batch = int(self.data_reader.y_train.shape[0] / self.conf.batch_size)
         self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
         for epoch in range(self.conf.max_epoch):
             self.data_reader.randomize()
-            if train_step % self.conf.SUMMARY_FREQ == 0:
-                x_batch, y_batch = self.data_reader.next_batch()
+            for train_step in range(self.num_train_batch):
+                start = train_step * self.conf.batch_size
+                end = (train_step + 1) * self.conf.batch_size
+                global_step = epoch * self.num_train_batch + train_step
+                x_batch, y_batch = self.data_reader.next_batch(start, end)
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                _, _, _, summary = self.sess.run([self.train_op,
-                                                  self.mean_loss_op,
-                                                  self.mean_accuracy_op,
-                                                  self.merged_summary], feed_dict=feed_dict)
-                loss, acc = self.sess.run([self.mean_loss, self.mean_accuracy])
-                self.save_summary(summary, train_step + self.conf.reload_step, mode='train')
-                print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
-            else:
-                x_batch, y_batch = self.data_reader.next_batch()
-                feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
-                self.sess.run([self.train_op, self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
-            if train_step % self.conf.VAL_FREQ == 0:
-                self.evaluate(train_step)
+                if train_step % self.conf.SUMMARY_FREQ == 0:
+                    _, _, _, summary = self.sess.run([self.train_op,
+                                                      self.mean_loss_op,
+                                                      self.mean_accuracy_op,
+                                                      self.merged_summary], feed_dict=feed_dict)
+                    loss, acc = self.sess.run([self.mean_loss, self.mean_accuracy])
+                    self.save_summary(summary, global_step, mode='train')
+                    print('step: {0:<6}, train_loss= {1:.4f}, train_acc={2:.01%}'.format(train_step, loss, acc))
+                else:
+                    self.sess.run([self.train_op, self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
 
-            if train_step % self.conf.SAVE_FREQ == 0:
-                self.save(train_step + self.conf.reload_step)
+            self.evaluate(epoch)
+            self.save(epoch)
+
+    def evaluate(self, epoch, global_step):
+        self.sess.run(tf.local_variables_initializer())
+        for step in range(self.num_val_batch):
+            start = step * self.conf.val_batch_size
+            end = (step + 1) * self.conf.val_batch_size
+            x_val, y_val = self.data_reader.next_batch(start, end, mode='valid')
+            feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
+            self.sess.run([self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
+
+        summary_valid = self.sess.run(self.merged_summary, feed_dict=feed_dict)
+        valid_loss, valid_acc = self.sess.run([self.mean_loss, self.mean_accuracy])
+        self.save_summary(summary_valid, global_step, mode='valid')
+        print('-' * 30 + 'Validation' + '-' * 30)
+        print('Epoch #{0} : val_loss= {1:.4f}, val_acc={2:.01%}'.format(epoch, valid_loss, valid_acc))
+        print('-' * 70)
