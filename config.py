@@ -25,15 +25,15 @@ flags.DEFINE_float('init_lr', 1e-3, 'Initial learning rate')
 flags.DEFINE_float('lr_min', 1e-4, 'Minimum learning rate')
 
 # data
-flags.DEFINE_string('data', 'mnist', 'mnist or nodule')
+flags.DEFINE_string('data', 'nodule', 'mnist or nodule')
 flags.DEFINE_integer('dim', 3, '2D or 3D for nodule data')
 flags.DEFINE_boolean('one_hot', True, 'one-hot-encode the labels')
 flags.DEFINE_boolean('data_augment', False, 'Adds augmentation to data')
 flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; when applying augmentation')
 flags.DEFINE_integer('num_tr', 55000, 'Total number of training images')
-flags.DEFINE_integer('height', 28, 'Network input height size')
-flags.DEFINE_integer('width', 28, 'Network input width size')
-flags.DEFINE_integer('depth', 1, 'Network input depth size (in the case of 3D input images)')
+flags.DEFINE_integer('height', 32, 'Network input height size')
+flags.DEFINE_integer('width', 32, 'Network input width size')
+flags.DEFINE_integer('depth', 32, 'Network input depth size (in the case of 3D input images)')
 flags.DEFINE_integer('channel', 1, 'Network input channel size')
 
 # Directories

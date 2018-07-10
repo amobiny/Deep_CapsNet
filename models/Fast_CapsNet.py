@@ -5,16 +5,24 @@ from keras import layers
 import tensorflow as tf
 from ops import *
 from layers.ops import squash
+import numpy as np
 
 
-class Fast_CapsNet_3D(BaseModel):
+class Fast_CapsNet_3D:
     def __init__(self, sess, conf):
-        super(Fast_CapsNet_3D, self).__init__(sess, conf)
+        self.sess = sess
+        self.conf = conf
         self.input_shape = [None, self.conf.height, self.conf.width, self.conf.depth, self.conf.channel]
         self.output_shape = [None, self.conf.num_cls]
         self.create_placeholders()
         self.build_network(self.x)
         self.configure_network()
+
+    def create_placeholders(self):
+        with tf.name_scope('Input'):
+            self.x = tf.placeholder(tf.float32, self.input_shape, name='input')
+            self.y = tf.placeholder(tf.float32, self.output_shape, name='annotation')
+            self.mask_with_labels = tf.placeholder_with_default(False, shape=(), name="mask_with_labels")
 
     def build_network(self, x):
         # Building network...
@@ -33,14 +41,14 @@ class Fast_CapsNet_3D(BaseModel):
             # Layer 3: Digit Capsule Layer; Here is where the routing takes place
             digitcaps_layer = FCCapsuleLayer(num_caps=self.conf.num_cls, caps_dim=self.conf.digit_caps_dim,
                                              routings=3, name='digit_caps')
-            self.digit_caps = digitcaps_layer(caps1_output)  # [?, 10, 16]
+            self.digit_caps = digitcaps_layer(caps1_output)  # [?, 2, 16]
             u_hat = digitcaps_layer.get_predictions(caps1_output)  # [?, 2, 512, 16]
             u_hat_shape = u_hat.get_shape().as_list()
             self.img_s = int(round(u_hat_shape[2] ** (1. / 3)))
             self.u_hat = layers.Reshape(
                 (self.conf.num_cls, self.img_s, self.img_s, self.img_s, 1, self.conf.digit_caps_dim))(u_hat)
             # self.u_hat = tf.transpose(u_hat, perm=[1, 0, 2, 3, 4, 5, 6])
-            # u_hat: [2, ?, 8, 8, 8, 1, 16]
+            # u_hat: [?, 2, 8, 8, 8, 1, 16]
             self.decoder()
 
     def decoder(self):
@@ -89,6 +97,93 @@ class Fast_CapsNet_3D(BaseModel):
                                            stride=2,
                                            layer_name="deconv_2",
                                            out_shape=[self.conf.batch_size, 32, 32, 32, 1])
+
+    def mask(self):
+        with tf.variable_scope('Masking'):
+            epsilon = 1e-9
+            self.v_length = tf.sqrt(tf.reduce_sum(tf.square(self.digit_caps), axis=2, keep_dims=True) + epsilon)
+            # [?, 10, 1]
+
+            y_prob_argmax = tf.to_int32(tf.argmax(self.v_length, axis=1))
+            # [?, 1]
+            self.y_pred = tf.squeeze(y_prob_argmax)
+            # [?] (predicted labels)
+            y_pred_ohe = tf.one_hot(self.y_pred, depth=self.conf.num_cls)
+            # [?, 10] (one-hot-encoded predicted labels)
+
+            reconst_targets = tf.cond(self.mask_with_labels,  # condition
+                                      lambda: self.y,  # if True (Training)
+                                      lambda: y_pred_ohe,  # if False (Test)
+                                      name="reconstruction_targets")
+            # [?, 10]
+
+            self.output_masked = tf.multiply(self.digit_caps, tf.expand_dims(reconst_targets, -1))
+            # [?, 10, 16]
+
+    def loss_func(self):
+        # 1. The margin loss
+        with tf.variable_scope('Margin_Loss'):
+            # max(0, m_plus-||v_c||)^2
+            present_error = tf.square(tf.maximum(0., self.conf.m_plus - self.v_length))
+            # [?, 10, 1]
+
+            # max(0, ||v_c||-m_minus)^2
+            absent_error = tf.square(tf.maximum(0., self.v_length - self.conf.m_minus))
+            # [?, 10, 1]
+
+            # reshape: [?, 10, 1] => [?, 10]
+            present_error = tf.squeeze(present_error)
+            absent_error = tf.squeeze(absent_error)
+
+            T_c = self.y
+            # [?, 10]
+            L_c = T_c * present_error + self.conf.lambda_val * (1 - T_c) * absent_error
+            # [?, 10]
+            self.margin_loss = tf.reduce_mean(tf.reduce_sum(L_c, axis=1), name="margin_loss")
+
+        # 2. The reconstruction loss
+        with tf.variable_scope('Reconstruction_Loss'):
+            orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.depth))
+            squared = tf.square(self.decoder_output - orgin)
+            self.reconstruction_err = tf.reduce_mean(squared)
+
+        # 3. Total loss
+        with tf.variable_scope('Total_Loss'):
+            self.total_loss = self.margin_loss + self.conf.alpha * self.reconstruction_err
+            self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
+
+    def accuracy_func(self):
+        with tf.variable_scope('Accuracy'):
+            correct_prediction = tf.equal(tf.to_int32(tf.argmax(self.y, axis=1)), self.y_pred)
+            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            self.mean_accuracy, self.mean_accuracy_op = tf.metrics.mean(accuracy)
+
+    def configure_network(self):
+        self.loss_func()
+        self.accuracy_func()
+        with tf.name_scope('Optimizer'):
+            with tf.name_scope('Learning_rate_decay'):
+                global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
+                                              trainable=False)
+                steps_per_epoch = self.conf.num_tr // self.conf.batch_size
+                learning_rate = tf.train.exponential_decay(self.conf.init_lr,
+                                                           global_step,
+                                                           steps_per_epoch,
+                                                           0.97,
+                                                           staircase=True)
+                self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
+            optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+            self.train_op = optimizer.minimize(self.total_loss, global_step=global_step)
+        self.sess.run(tf.global_variables_initializer())
+        trainable_vars = tf.trainable_variables()
+        self.saver = tf.train.Saver(var_list=trainable_vars, max_to_keep=1000)
+        self.train_writer = tf.summary.FileWriter(self.conf.logdir + self.conf.run_name + '/train/', self.sess.graph)
+        self.valid_writer = tf.summary.FileWriter(self.conf.logdir + self.conf.run_name + '/valid/')
+        self.configure_summary()
+        print('*' * 50)
+        print('Total number of trainable parameters: {}'.
+              format(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()])))
+        print('*' * 50)
 
     def configure_summary(self):
         recon_img = tf.reshape(self.decoder_output[:, :, :, 16, :],

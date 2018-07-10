@@ -62,7 +62,7 @@ class BaseModel(object):
 
         # 2. The reconstruction loss
         with tf.variable_scope('Reconstruction_Loss'):
-            orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.depth))
+            orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width))
             squared = tf.square(self.decoder_output - orgin)
             self.reconstruction_err = tf.reduce_mean(squared)
 
