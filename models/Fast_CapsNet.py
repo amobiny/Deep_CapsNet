@@ -1,9 +1,6 @@
-from base_model import BaseModel
-from layers.Conv_Caps import ConvCapsuleLayer
 from layers.FC_Caps import FCCapsuleLayer
 from keras import layers
-import tensorflow as tf
-from ops import *
+from models.utils.ops import *
 from layers.ops import squash
 import numpy as np
 
@@ -199,9 +196,9 @@ class Fast_CapsNet_3D:
     def train(self):
         self.sess.run(tf.local_variables_initializer())
         if self.conf.data == 'mnist':
-            from MNISTLoader import DataLoader
+            from DataLoaders.MNISTLoader import DataLoader
         elif self.conf.data == 'nodule':
-            from DataLoader import DataLoader
+            from DataLoaders.DataLoader import DataLoader
 
         self.data_reader = DataLoader(self.conf)
         self.data_reader.get_validation()

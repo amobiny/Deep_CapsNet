@@ -13,9 +13,7 @@ def main(_):
         print('invalid mode: ', args.mode)
         print("Please input a mode: train, test, or predict")
     else:
-        # model = Fast_CapsNet_3D(tf.Session(), args)
-        model = MatrixCapsNet(tf.Session(), args)
-        # model.count_params()
+        model = CapsNet(tf.Session(), args)
         if not os.path.exists(args.modeldir+args.run_name):
             os.makedirs(args.modeldir+args.run_name)
         if not os.path.exists(args.logdir+args.run_name):
@@ -30,5 +28,5 @@ def main(_):
 
 if __name__ == '__main__':
     # configure which gpu or cpu to use
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     tf.app.run()

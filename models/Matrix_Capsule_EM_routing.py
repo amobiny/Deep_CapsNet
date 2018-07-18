@@ -1,6 +1,6 @@
 from base_model import BaseModel
 import tensorflow as tf
-from models.ops import conv_2d, capsules_init, capsule_conv, capsule_fc
+from models.utils.ops import conv_2d, capsules_init, capsule_conv, capsule_fc
 
 
 class MatrixCapsNet(BaseModel):
@@ -23,6 +23,5 @@ class MatrixCapsNet(BaseModel):
             pose, act = capsule_conv(pose, act, K=3, OUT=self.conf.D, stride=1,
                                      iters=self.conf.iter, name='capsule_conv2')
             # [?, 4, 4, D, 4, 4], [?, 4, 4, D]
-            pose, act = capsule_fc(pose, act, OUT=self.conf.num_cls, iters=self.conf.iter, name='capsule_fc')
-            print()
+            self.pose, self.act = capsule_fc(pose, act, OUT=self.conf.num_cls, iters=self.conf.iter, name='capsule_fc')
 

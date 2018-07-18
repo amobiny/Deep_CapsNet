@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from models.EM import matrix_capsules_em_routing
+from models.utils.EM import matrix_capsules_em_routing
 
 
 def weight_variable(shape, name='W'):

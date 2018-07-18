@@ -1,8 +1,7 @@
 import tensorflow as tf
 import os
 import numpy as np
-
-from models.loss_ops import margin_loss, spread_loss
+from models.utils.loss_ops import margin_loss, spread_loss
 
 
 class BaseModel(object):
@@ -44,17 +43,17 @@ class BaseModel(object):
     def loss_func(self):
         with tf.variable_scope('Total_Loss'):
             if self.conf.loss_type == 'margin':
-                self.loss = margin_loss(self.y, self.v_length, self.conf)
+                loss = margin_loss(self.y, self.v_length, self.conf)
             elif self.conf.loss_type == 'spread':
                 self.loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
             if self.conf.add_recon_loss:
                 with tf.variable_scope('Reconstruction_Loss'):
-                    orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width))
+                    orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.channel))
                     squared = tf.square(self.decoder_output - orgin)
                     self.reconstruction_err = tf.reduce_mean(squared)
-                    self.total_loss = self.loss + self.conf.alpha * self.reconstruction_err
+                    self.total_loss = loss + self.conf.alpha * self.reconstruction_err
             else:
-                self.total_loss = self.loss
+                self.total_loss = loss
             self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
 
     def accuracy_func(self):
@@ -70,11 +69,10 @@ class BaseModel(object):
             with tf.name_scope('Learning_rate_decay'):
                 global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
                                               trainable=False)
-                steps_per_epoch = self.conf.num_tr // self.conf.batch_size
                 learning_rate = tf.train.exponential_decay(self.conf.init_lr,
                                                            global_step,
-                                                           steps_per_epoch,
-                                                           0.97,
+                                                           decay_steps=1000,
+                                                           decay_rate=0.97,
                                                            staircase=True)
                 self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
             optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
@@ -91,11 +89,15 @@ class BaseModel(object):
         print('*' * 50)
 
     def configure_summary(self):
-        recon_img = tf.reshape(self.decoder_output, shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
-        summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                        tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
-                        tf.summary.image('original', self.x),
-                        tf.summary.image('reconstructed', recon_img)]
+        if self.conf.add_recon_loss:
+            recon_img = tf.reshape(self.decoder_output, shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
+            summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
+                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
+                            tf.summary.image('original', self.x),
+                            tf.summary.image('reconstructed', recon_img)]
+        else:
+            summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
+                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)]
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):
@@ -108,10 +110,13 @@ class BaseModel(object):
 
     def train(self):
         self.sess.run(tf.local_variables_initializer())
+        self.best_validation_accuracy = 0
         if self.conf.data == 'mnist':
-            from MNISTLoader import DataLoader
+            from DataLoaders.MNISTLoader import DataLoader
         elif self.conf.data == 'nodule':
-            from DataLoader import DataLoader
+            from DataLoaders.DataLoader import DataLoader
+        elif self.conf.data == 'cifar10':
+            from DataLoaders.CIFARLoader import DataLoader
 
         self.data_reader = DataLoader(self.conf)
         self.data_reader.get_validation()
@@ -158,9 +163,15 @@ class BaseModel(object):
         summary_valid = self.sess.run(self.merged_summary, feed_dict=feed_dict)
         valid_loss, valid_acc = self.sess.run([self.mean_loss, self.mean_accuracy])
         self.save_summary(summary_valid, train_step + self.conf.reload_step, mode='valid')
-        print('-' * 30 + 'Validation' + '-' * 30)
-        print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}'.format(train_step,valid_loss, valid_acc))
-        print('-' * 70)
+        if valid_acc > self.best_validation_accuracy:
+            self.best_validation_accuracy = valid_acc
+            improved_str = '(improved)'
+        else:
+            improved_str = ''
+        print('-' * 25 + 'Validation' + '-' * 25)
+        print('After {0} training step: val_loss= {1:.4f}, val_acc={2:.01%}{3}'
+              .format(train_step, valid_loss, valid_acc, improved_str))
+        print('-' * 60)
 
     def test(self):
         pass
@@ -169,12 +180,11 @@ class BaseModel(object):
         print('*' * 50)
         print('----> Saving the model at step #{0}'.format(step))
         print('*' * 50)
-        checkpoint_path = os.path.join(
-            self.conf.modeldir, self.conf.model_name)
+        checkpoint_path = os.path.join(self.conf.modeldir+self.conf.run_name, self.conf.model_name)
         self.saver.save(self.sess, checkpoint_path, global_step=step)
 
     def reload(self, step):
-        checkpoint_path = os.path.join(self.conf.modeldir, self.conf.model_name)
+        checkpoint_path = os.path.join(self.conf.modeldir+self.conf.run_name, self.conf.model_name)
         model_path = checkpoint_path + '-' + str(step)
         if not os.path.exists(model_path + '.meta'):
             print('----> No such checkpoint found', model_path)
@@ -182,7 +192,3 @@ class BaseModel(object):
         print('----> Restoring the model...')
         self.saver.restore(self.sess, model_path)
         print('----> Model successfully restored')
-
-    def count_params(self):
-        """Returns number of trainable parameters."""
-        return count_parameters(self.sess)
