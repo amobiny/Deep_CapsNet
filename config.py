@@ -12,6 +12,9 @@ flags.DEFINE_integer('SUMMARY_FREQ', 100, 'Number of step to save summary')
 flags.DEFINE_integer('VAL_FREQ', 500, 'Number of step to evaluate the network on Validation data')
 
 # Hyper-parameters
+flags.DEFINE_string('loss_type', 'spread', 'spread or margin')
+flags.DEFINE_boolean('add_recon_loss', True, 'To add reconstruction loss')
+
 # For margin loss
 flags.DEFINE_float('m_plus', 0.9, 'm+ parameter')
 flags.DEFINE_float('m_minus', 0.1, 'm- parameter')
@@ -25,14 +28,14 @@ flags.DEFINE_float('init_lr', 1e-3, 'Initial learning rate')
 flags.DEFINE_float('lr_min', 1e-4, 'Minimum learning rate')
 
 # data
-flags.DEFINE_string('data', 'nodule', 'mnist or nodule')
-flags.DEFINE_integer('dim', 3, '2D or 3D for nodule data')
+flags.DEFINE_string('data', 'mnist', 'mnist or nodule')
+flags.DEFINE_integer('dim', 2, '2D or 3D for nodule data')
 flags.DEFINE_boolean('one_hot', True, 'one-hot-encode the labels')
 flags.DEFINE_boolean('data_augment', False, 'Adds augmentation to data')
 flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; when applying augmentation')
 flags.DEFINE_integer('num_tr', 55000, 'Total number of training images')
-flags.DEFINE_integer('height', 32, 'Network input height size')
-flags.DEFINE_integer('width', 32, 'Network input width size')
+flags.DEFINE_integer('height', 28, 'Network input height size')
+flags.DEFINE_integer('width', 28, 'Network input width size')
 flags.DEFINE_integer('depth', 32, 'Network input depth size (in the case of 3D input images)')
 flags.DEFINE_integer('channel', 1, 'Network input channel size')
 
@@ -46,9 +49,16 @@ flags.DEFINE_string('model_name', 'model', 'Model file name')
 flags.DEFINE_integer('reload_step', 0, 'Reload step to continue training')
 
 # network architecture
-flags.DEFINE_integer('num_cls', 2, 'Number of output classes')
+flags.DEFINE_integer('num_cls', 10, 'Number of output classes')
 flags.DEFINE_integer('digit_caps_dim', 16, 'Dimension of the DigitCaps')
 flags.DEFINE_integer('h1', 512, 'Number of hidden units of the first FC layer of the reconstruction network')
 flags.DEFINE_integer('h2', 1024, 'Number of hidden units of the second FC layer of the reconstruction network')
+
+# Matrix Capsule architecture
+flags.DEFINE_integer('iter', 1, 'Number of EM-routing iterations')
+flags.DEFINE_integer('B', 32, 'B in Figure 1 of the paper')
+flags.DEFINE_integer('C', 32, 'B in Figure 1 of the paper')
+flags.DEFINE_integer('D', 32, 'B in Figure 1 of the paper')
+flags.DEFINE_integer('E', 32, 'B in Figure 1 of the paper')
 
 args = tf.app.flags.FLAGS

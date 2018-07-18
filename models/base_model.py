@@ -2,6 +2,8 @@ import tensorflow as tf
 import os
 import numpy as np
 
+from models.loss_ops import margin_loss, spread_loss
+
 
 class BaseModel(object):
     def __init__(self, sess, conf):
@@ -40,35 +42,19 @@ class BaseModel(object):
             # [?, 10, 16]
 
     def loss_func(self):
-        # 1. The margin loss
-        with tf.variable_scope('Margin_Loss'):
-            # max(0, m_plus-||v_c||)^2
-            present_error = tf.square(tf.maximum(0., self.conf.m_plus - self.v_length))
-            # [?, 10, 1]
-
-            # max(0, ||v_c||-m_minus)^2
-            absent_error = tf.square(tf.maximum(0., self.v_length - self.conf.m_minus))
-            # [?, 10, 1]
-
-            # reshape: [?, 10, 1] => [?, 10]
-            present_error = tf.squeeze(present_error)
-            absent_error = tf.squeeze(absent_error)
-
-            T_c = self.y
-            # [?, 10]
-            L_c = T_c * present_error + self.conf.lambda_val * (1 - T_c) * absent_error
-            # [?, 10]
-            self.margin_loss = tf.reduce_mean(tf.reduce_sum(L_c, axis=1), name="margin_loss")
-
-        # 2. The reconstruction loss
-        with tf.variable_scope('Reconstruction_Loss'):
-            orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width))
-            squared = tf.square(self.decoder_output - orgin)
-            self.reconstruction_err = tf.reduce_mean(squared)
-
-        # 3. Total loss
         with tf.variable_scope('Total_Loss'):
-            self.total_loss = self.margin_loss + self.conf.alpha * self.reconstruction_err
+            if self.conf.loss_type == 'margin':
+                self.loss = margin_loss(self.y, self.v_length, self.conf)
+            elif self.conf.loss_type == 'spread':
+                self.loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
+            if self.conf.add_recon_loss:
+                with tf.variable_scope('Reconstruction_Loss'):
+                    orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width))
+                    squared = tf.square(self.decoder_output - orgin)
+                    self.reconstruction_err = tf.reduce_mean(squared)
+                    self.total_loss = self.loss + self.conf.alpha * self.reconstruction_err
+            else:
+                self.total_loss = self.loss
             self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
 
     def accuracy_func(self):
