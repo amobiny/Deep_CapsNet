@@ -1,5 +1,4 @@
 import tensorflow as tf
-
 from models.utils.EM import matrix_capsules_em_routing
 
 
@@ -11,6 +10,7 @@ def weight_variable(shape, name='W'):
     :return: initialized weight variable
     """
     initer = tf.contrib.layers.xavier_initializer(uniform=False)
+    # initer = tf.truncated_normal_initializer(stddev=0.01)
     return tf.get_variable(name, dtype=tf.float32,
                            shape=shape, initializer=initer)
 
@@ -22,8 +22,9 @@ def bias_variable(shape, name='b'):
     :param shape: bias variable shape
     :return: initial bias variable
     """
-    initial = tf.constant(0., shape=shape, dtype=tf.float32)
-    return tf.get_variable(name, dtype=tf.float32,
+    # initial = tf.constant(0., shape=shape, dtype=tf.float32)
+    initial = tf.truncated_normal_initializer(stddev=0.01)
+    return tf.get_variable(name, dtype=tf.float32, shape=shape,
                            initializer=initial)
 
 
@@ -33,36 +34,42 @@ def conv_2d(inputs, filter_size, stride, num_filters, name, padding='SAME', add_
 
     num_inChannel = inputs.get_shape().as_list()[-1]
     with tf.variable_scope(name):
+        if batch_norm:
+            inputs = batch_norm_wrapper(inputs, is_train)
         shape = [filter_size, filter_size, num_inChannel, num_filters]
         weights = weight_variable(shape=shape)
+        summary = tf.summary.histogram('w', weights)
         layer = tf.nn.conv2d(input=inputs,
                              filter=weights,
                              strides=[1, stride, stride, 1],
                              padding=padding)
-        if batch_norm:
-            layer = batch_norm_wrapper(layer, is_train)
+
         if add_bias:
             biases = bias_variable([num_filters])
             layer += biases
         if add_reg:
             tf.add_to_collection('weights', weights)
         layer = act_func(layer)
-    return layer
+    return layer, summary
 
 
 def capsules_init(inputs, filter_size, stride, OUT, pose_shape, padding='valid', name=None):
     """This constructs a primary capsule layer from a regular convolution layer."""
     with tf.variable_scope(name):
+        sum_list = []
         num_filters = OUT * pose_shape[0] * pose_shape[1]
-        pose = conv_2d(inputs, filter_size, stride, num_filters, 'pose_stacked',
-                       padding=padding, add_bias=False, act_func=tf.identity)
+        pose, w_summary = conv_2d(inputs, filter_size, stride, num_filters, 'pose_stacked',
+                                  padding=padding, add_bias=True, act_func=tf.identity)
+        sum_list.append(w_summary)
         poses_shape = pose.get_shape().as_list()
         pose = tf.reshape(pose,
                           shape=[-1] + poses_shape[1:-1] + [OUT, pose_shape[0], pose_shape[1]], name='poses')
-        activations = conv_2d(inputs, filter_size, stride, OUT, 'activation',
-                              padding=padding, add_bias=False, act_func=tf.sigmoid)
-        tf.summary.histogram('activations', activations)
-        return pose, activations
+        activations, w_summary = conv_2d(inputs, filter_size, stride, OUT, 'activation',
+                                          padding=padding, add_bias=True, act_func=tf.sigmoid)
+        sum_list.append(w_summary)
+        a_summary = tf.summary.histogram('activations', activations)
+        sum_list.append(a_summary)
+        return pose, activations, sum_list
 
 
 def capsule_conv(input_pose, input_act, K, OUT, stride, iters, name):
@@ -70,12 +77,14 @@ def capsule_conv(input_pose, input_act, K, OUT, stride, iters, name):
 
     _, H, W, IN, PH, PW = input_pose.get_shape().as_list()
     with tf.variable_scope(name):
+        sum_list = []
         weights = weight_variable(name='pose_weight', shape=[K, K, IN, OUT, PH, PH])
         hk_offsets = [[(h_offset + k_offset) for k_offset in range(0, K)] for h_offset in
                       range(0, W + 1 - K, stride)]
         wk_offsets = [[(w_offset + k_offset) for k_offset in range(0, K)] for w_offset in
                       range(0, H + 1 - K, stride)]
-
+        w_summary = tf.summary.histogram('w', weights)
+        sum_list.append(w_summary)
         inputs_poses_patches = tf.transpose(tf.gather(tf.gather(input_pose, hk_offsets, axis=1), wk_offsets, axis=3),
                                             perm=[0, 1, 3, 2, 4, 5, 6, 7])
         # [N, OH, OW, KH, KW, IN, PH, PW]
@@ -98,18 +107,26 @@ def capsule_conv(input_pose, input_act, K, OUT, stride, iters, name):
                                                       votes_shape[3] * votes_shape[4] * votes_shape[5]])
         # [N, OH, OW, KH x KW x I]
         beta_v = weight_variable(shape=[1, 1, 1, votes_shape[6]], name='beta_v')
+        beta_v_summary = tf.summary.histogram('beta_v', beta_v)
+        sum_list.append(beta_v_summary)
         beta_a = weight_variable(shape=[1, 1, 1, votes_shape[6]], name='beta_a')
+        beta_a_summary = tf.summary.histogram('beta_a', beta_a)
+        sum_list.append(beta_a_summary)
         out_pose, out_act = matrix_capsules_em_routing(votes, act, beta_v, beta_a, iters, name='EM')
         out_pose = tf.reshape(out_pose, [-1, votes_shape[1], votes_shape[2],
                                          votes_shape[6], votes_shape[7], votes_shape[8]])
-        tf.summary.histogram('activations', out_act)
-        return out_pose, out_act
+        a_summary = tf.summary.histogram('activations', out_act)
+        sum_list.append(a_summary)
+        return out_pose, out_act, sum_list
 
 
 def capsule_fc(input_pose, input_act, OUT, iters, name):
     _, H, W, IN, PH, PW = input_pose.get_shape().as_list()
+    sum_list = []
     with tf.variable_scope(name):
         weights = weight_variable(name='pose_weight', shape=[IN, OUT, PH, PH])
+        w_summary = tf.summary.histogram('w', weights)
+        sum_list.append(w_summary)
         input_pose_expansion = input_pose[..., tf.newaxis, :, :]
         # [N, H, W, I, 1, PH, PW]
         inputs_poses_expansion = tf.tile(input_pose_expansion, [1, 1, 1, 1, OUT, 1, 1])
@@ -130,20 +147,25 @@ def capsule_fc(input_pose, input_act, OUT, iters, name):
                                        + [coordinate_offset_w0 for _ in xrange(14)], axis=-1)
 
         votes = votes + coordinate_offset_h + coordinate_offset_w
-        votes = tf.reshape(votes, [-1,votes_shape[1] * votes_shape[2] * votes_shape[3],
+        votes = tf.reshape(votes, [-1, votes_shape[1] * votes_shape[2] * votes_shape[3],
                                    votes_shape[4], votes_shape[5] * votes_shape[6]])
         i_act = tf.reshape(input_act, [-1, H * W * IN])
 
         beta_v = weight_variable(shape=[1, OUT], name='beta_v')
+        beta_v_summary = tf.summary.histogram('beta_v', beta_v)
+        sum_list.append(beta_v_summary)
         beta_a = weight_variable(shape=[1, OUT], name='beta_a')
+        beta_a_summary = tf.summary.histogram('beta_a', beta_a)
+        sum_list.append(beta_a_summary)
 
         pose, out_act = matrix_capsules_em_routing(votes, i_act, beta_v, beta_a, iters, name='EM')
         # [N, O, PH x PW], [N, O]
         out_pose = tf.reshape(pose, [-1, votes_shape[4], votes_shape[5], votes_shape[6]])
         # [N, O, PH, PW]
-        tf.summary.histogram('activations', out_act)
+        a_summary = tf.summary.histogram('activations', out_act)
+        sum_list.append(a_summary)
 
-    return out_pose, out_act
+    return out_pose, tf.cast(out_act, tf.float32), sum_list
 
 
 def _matmul_broadcast(x, y):

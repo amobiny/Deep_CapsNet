@@ -70,11 +70,7 @@ def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations,
             o_mean = tf.reduce_sum(rr_prime * votes, axis=-3, keep_dims=True) / rr_prime_sum
 
             # o_stdv: [N, OH, OW, 1, O, PH x PW]
-            o_stdv = tf.sqrt(
-                tf.reduce_sum(
-                    rr_prime * tf.square(votes - o_mean), axis=-3, keep_dims=True
-                ) / rr_prime_sum
-            )
+            o_stdv = tf.sqrt(tf.reduce_sum(rr_prime * tf.square(votes - o_mean), axis=-3, keep_dims=True) / rr_prime_sum)
 
             # o_cost_h: [N, OH, OW, 1, O, PH x PW]
             o_cost_h = (beta_v + tf.log(o_stdv + epsilon)) * rr_prime_sum

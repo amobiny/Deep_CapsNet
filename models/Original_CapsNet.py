@@ -34,7 +34,7 @@ class Orig_CapsNet(BaseModel):
             # [?, 10, 16]
 
             self.mask()
-            # self.decoder()
+            self.decoder()
 
     def decoder(self):
         with tf.variable_scope('Decoder'):

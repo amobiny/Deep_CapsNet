@@ -13,7 +13,7 @@ def main(_):
         print('invalid mode: ', args.mode)
         print("Please input a mode: train, test, or predict")
     else:
-        model = CapsNet(tf.Session(), args)
+        model = MatrixCapsNet(tf.Session(), args)
         if not os.path.exists(args.modeldir+args.run_name):
             os.makedirs(args.modeldir+args.run_name)
         if not os.path.exists(args.logdir+args.run_name):

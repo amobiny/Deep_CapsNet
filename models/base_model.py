@@ -8,10 +8,12 @@ class BaseModel(object):
     def __init__(self, sess, conf):
         self.sess = sess
         self.conf = conf
-        self.input_shape = [None, self.conf.height, self.conf.width, self.conf.channel]
-        self.output_shape = [None, self.conf.num_cls]
+        self.summary_list = []
+        self.input_shape = [self.conf.batch_size, self.conf.height, self.conf.width, self.conf.channel]
+        self.output_shape = [self.conf.batch_size, self.conf.num_cls]
         self.create_placeholders()
-
+        self.global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
+                                           trainable=False)
     def create_placeholders(self):
         with tf.name_scope('Input'):
             self.x = tf.placeholder(tf.float32, self.input_shape, name='input')
@@ -36,7 +38,6 @@ class BaseModel(object):
                                       lambda: y_pred_ohe,  # if False (Test)
                                       name="reconstruction_targets")
             # [?, 10]
-
             self.output_masked = tf.multiply(self.digit_caps, tf.expand_dims(reconst_targets, -1))
             # [?, 10, 16]
 
@@ -45,7 +46,8 @@ class BaseModel(object):
             if self.conf.loss_type == 'margin':
                 loss = margin_loss(self.y, self.v_length, self.conf)
             elif self.conf.loss_type == 'spread':
-                self.loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
+                self.generate_margin()
+                loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
             if self.conf.add_recon_loss:
                 with tf.variable_scope('Reconstruction_Loss'):
                     orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.channel))
@@ -62,21 +64,30 @@ class BaseModel(object):
             accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
             self.mean_accuracy, self.mean_accuracy_op = tf.metrics.mean(accuracy)
 
+    def generate_margin(self):
+        # margin schedule
+        # margin increase from 0.2 to 0.9 after margin_schedule_epoch_achieve_max
+        NUM_STEPS_PER_EPOCH = int(55000 / self.conf.batch_size)
+        margin_schedule_epoch_achieve_max = 10.0
+        self.margin = tf.train.piecewise_constant(tf.cast(self.global_step, dtype=tf.int32),
+                                                  boundaries=[int(NUM_STEPS_PER_EPOCH *
+                                                                  margin_schedule_epoch_achieve_max * x / 7)
+                                                              for x in xrange(1, 8)],
+                                                  values=[x / 10.0 for x in range(2, 10)])
+
     def configure_network(self):
         self.loss_func()
         self.accuracy_func()
         with tf.name_scope('Optimizer'):
             with tf.name_scope('Learning_rate_decay'):
-                global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
-                                              trainable=False)
                 learning_rate = tf.train.exponential_decay(self.conf.init_lr,
-                                                           global_step,
-                                                           decay_steps=1000,
-                                                           decay_rate=0.97,
+                                                           self.global_step,
+                                                           decay_steps=5500,
+                                                           decay_rate=0.8,
                                                            staircase=True)
                 self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
             optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-            self.train_op = optimizer.minimize(self.total_loss, global_step=global_step)
+            self.train_op = optimizer.minimize(self.total_loss, global_step=self.global_step)
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()
         self.saver = tf.train.Saver(var_list=trainable_vars, max_to_keep=1000)
@@ -90,14 +101,15 @@ class BaseModel(object):
 
     def configure_summary(self):
         if self.conf.add_recon_loss:
-            recon_img = tf.reshape(self.decoder_output, shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
+            recon_img = tf.reshape(self.decoder_output,
+                                   shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
             summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
                             tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
                             tf.summary.image('original', self.x),
                             tf.summary.image('reconstructed', recon_img)]
         else:
             summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)]
+                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)]+self.summary_list
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):
@@ -129,8 +141,9 @@ class BaseModel(object):
             print('*' * 50)
             print('----> Start Training')
             print('*' * 50)
-        self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.val_batch_size)
+        self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.batch_size)
         for train_step in range(1, self.conf.max_step + 1):
+            self.is_train = True
             if train_step % self.conf.SUMMARY_FREQ == 0:
                 x_batch, y_batch = self.data_reader.next_batch()
                 feed_dict = {self.x: x_batch, self.y: y_batch, self.mask_with_labels: True}
@@ -152,10 +165,11 @@ class BaseModel(object):
                 self.save(train_step + self.conf.reload_step)
 
     def evaluate(self, train_step):
+        self.is_train = False
         self.sess.run(tf.local_variables_initializer())
         for step in range(self.num_val_batch):
-            start = step * self.conf.val_batch_size
-            end = (step + 1) * self.conf.val_batch_size
+            start = step * self.conf.batch_size
+            end = (step + 1) * self.conf.batch_size
             x_val, y_val = self.data_reader.next_batch(start, end, mode='valid')
             feed_dict = {self.x: x_val, self.y: y_val, self.mask_with_labels: False}
             self.sess.run([self.mean_loss_op, self.mean_accuracy_op], feed_dict=feed_dict)
@@ -180,11 +194,11 @@ class BaseModel(object):
         print('*' * 50)
         print('----> Saving the model at step #{0}'.format(step))
         print('*' * 50)
-        checkpoint_path = os.path.join(self.conf.modeldir+self.conf.run_name, self.conf.model_name)
+        checkpoint_path = os.path.join(self.conf.modeldir + self.conf.run_name, self.conf.model_name)
         self.saver.save(self.sess, checkpoint_path, global_step=step)
 
     def reload(self, step):
-        checkpoint_path = os.path.join(self.conf.modeldir+self.conf.run_name, self.conf.model_name)
+        checkpoint_path = os.path.join(self.conf.modeldir + self.conf.run_name, self.conf.model_name)
         model_path = checkpoint_path + '-' + str(step)
         if not os.path.exists(model_path + '.meta'):
             print('----> No such checkpoint found', model_path)
