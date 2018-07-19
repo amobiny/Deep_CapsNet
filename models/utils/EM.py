@@ -2,6 +2,7 @@ import tensorflow as tf
 
 epsilon = 1e-9
 
+
 def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations, name):
     """The EM routing between input capsules (i) and output capsules (o).
 
@@ -62,15 +63,15 @@ def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations,
             # votes: [N, OH, OW, KH x KW x I, O, PH x PW]
             # rr_prime: [N, OH, OW, KH x KW x I, O, 1]
             rr_prime = rr * i_activations
-
+            # rr_prime = rr_prime / (tf.reduce_sum(rr_prime, axis=-2, keep_dims=True) + epsilon)
             # rr_prime_sum: sum acorss i, [N, OH, OW, 1, O, 1]
-            rr_prime_sum = tf.reduce_sum(rr_prime, axis=-3, keep_dims=True, name='rr_prime_sum')
+            rr_prime_sum = tf.reduce_sum(rr_prime, axis=-3, keepdims=True, name='rr_prime_sum')
 
             # o_mean: [N, OH, OW, 1, O, PH x PW]
-            o_mean = tf.reduce_sum(rr_prime * votes, axis=-3, keep_dims=True) / rr_prime_sum
+            o_mean = tf.reduce_sum(rr_prime * votes, axis=-3, keepdims=True) / rr_prime_sum
 
             # o_stdv: [N, OH, OW, 1, O, PH x PW]
-            o_stdv = tf.sqrt(tf.reduce_sum(rr_prime * tf.square(votes - o_mean), axis=-3, keep_dims=True) / rr_prime_sum)
+            o_stdv = tf.sqrt(tf.reduce_sum(rr_prime * tf.square(votes - o_mean), axis=-3, keepdims=True) / rr_prime_sum)
 
             # o_cost_h: [N, OH, OW, 1, O, PH x PW]
             o_cost_h = (beta_v + tf.log(o_stdv + epsilon)) * rr_prime_sum
@@ -81,17 +82,14 @@ def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations,
             # It is in fact only the relative variance between each channel determined which one should activate,
             # the `relative` smaller variance, the `relative` higher activation.
             # o_cost: [N, OH, OW, 1, O, 1]
-            o_cost = tf.reduce_sum(o_cost_h, axis=-1, keep_dims=True)
-            o_cost_mean = tf.reduce_mean(o_cost, axis=-2, keep_dims=True)
-            o_cost_stdv = tf.sqrt(
-                tf.reduce_sum(
-                    tf.square(o_cost - o_cost_mean), axis=-2, keep_dims=True
-                ) / o_cost.get_shape().as_list()[-2]
-            )
+            o_cost = tf.reduce_sum(o_cost_h, axis=-1, keepdims=True)
+            o_cost_mean = tf.reduce_mean(o_cost, axis=-2, keepdims=True)
+            o_cost_stdv = tf.sqrt(tf.reduce_sum(tf.square(o_cost - o_cost_mean), axis=-2, keepdims=True)
+                                  / o_cost.get_shape().as_list()[-2])
             o_activations_cost = beta_a + (o_cost_mean - o_cost) / (o_cost_stdv + epsilon)
-            tf.summary.histogram('o_activation_cost', o_activations_cost)
+            # tf.summary.histogram('o_activation_cost', o_activations_cost)
             o_activations = tf.sigmoid(inverse_temperature * o_activations_cost)
-            tf.summary.histogram('o_activation', o_activations)
+            # tf.summary.histogram('o_activation', o_activations)
             return o_mean, o_stdv, o_activations
 
         def e_step(o_mean, o_stdv, o_activations, votes):
@@ -109,16 +107,16 @@ def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations,
             # o_p: [N, OH, OW, KH x KW x I, O, 1]
             # o_p is the probability density of the h-th component of the vote from i to c
             o_p_unit0 = - tf.reduce_sum(
-                tf.square(votes - o_mean) / (2 * tf.square(o_stdv)), axis=-1, keep_dims=True)
+                tf.square(votes - o_mean) / (2 * tf.square(o_stdv)), axis=-1, keepdims=True)
 
-            o_p_unit2 = - tf.reduce_sum(tf.log(o_stdv + epsilon), axis=-1, keep_dims=True)
+            o_p_unit2 = - tf.reduce_sum(tf.log(o_stdv + epsilon), axis=-1, keepdims=True)
 
             # o_p
             o_p = o_p_unit0 + o_p_unit2
 
             # rr: [N, OH, OW, KH x KW x I, O, 1]
             zz = tf.log(o_activations + epsilon) + o_p
-            rr = tf.nn.softmax(zz, dim=len(zz.get_shape().as_list()) - 2)
+            rr = tf.nn.softmax(zz, axis=len(zz.get_shape().as_list()) - 2)
             tf.summary.histogram('rr', rr)
             return rr
 

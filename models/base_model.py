@@ -14,6 +14,7 @@ class BaseModel(object):
         self.create_placeholders()
         self.global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
                                            trainable=False)
+
     def create_placeholders(self):
         with tf.name_scope('Input'):
             self.x = tf.placeholder(tf.float32, self.input_shape, name='input')
@@ -78,6 +79,7 @@ class BaseModel(object):
     def configure_network(self):
         self.loss_func()
         self.accuracy_func()
+
         with tf.name_scope('Optimizer'):
             with tf.name_scope('Learning_rate_decay'):
                 learning_rate = tf.train.exponential_decay(self.conf.init_lr,
@@ -87,7 +89,16 @@ class BaseModel(object):
                                                            staircase=True)
                 self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
             optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-            self.train_op = optimizer.minimize(self.total_loss, global_step=self.global_step)
+            """Compute gradient."""
+            grads = optimizer.compute_gradients(self.total_loss)
+            grad_check = [tf.check_numerics(g, message='Gradient NaN Found!') for g, _ in grads if g is not None] \
+                         + [tf.check_numerics(self.total_loss, message='Loss NaN Found')]
+            """Apply graident."""
+            with tf.control_dependencies(grad_check):
+                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                with tf.control_dependencies(update_ops):
+                    grads = [(tf.where(tf.is_nan(grad), tf.zeros(grad.shape), grad), var) for grad, var in grads]
+            self.train_op = optimizer.apply_gradients(grads, global_step=self.global_step)
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()
         self.saver = tf.train.Saver(var_list=trainable_vars, max_to_keep=1000)
@@ -109,7 +120,7 @@ class BaseModel(object):
                             tf.summary.image('reconstructed', recon_img)]
         else:
             summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)]+self.summary_list
+                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)] + self.summary_list
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):
@@ -143,6 +154,7 @@ class BaseModel(object):
             print('*' * 50)
         self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.batch_size)
         for train_step in range(1, self.conf.max_step + 1):
+            print(train_step)
             self.is_train = True
             if train_step % self.conf.SUMMARY_FREQ == 0:
                 x_batch, y_batch = self.data_reader.next_batch()

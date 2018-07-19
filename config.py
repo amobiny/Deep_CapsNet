@@ -56,8 +56,8 @@ flags.DEFINE_integer('h2', 1024, 'Number of hidden units of the second FC layer 
 # Matrix Capsule architecture
 flags.DEFINE_integer('iter', 3, 'Number of EM-routing iterations')
 flags.DEFINE_integer('A', 32, 'A in Figure 1 of the paper')
-flags.DEFINE_integer('B', 16, 'B in Figure 1 of the paper')
-flags.DEFINE_integer('C', 32, 'C in Figure 1 of the paper')
-flags.DEFINE_integer('D', 32, 'D in Figure 1 of the paper')
+flags.DEFINE_integer('B', 8, 'B in Figure 1 of the paper')
+flags.DEFINE_integer('C', 16, 'C in Figure 1 of the paper')
+flags.DEFINE_integer('D', 16, 'D in Figure 1 of the paper')
 
 args = tf.app.flags.FLAGS
