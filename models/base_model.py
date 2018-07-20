@@ -43,27 +43,36 @@ class BaseModel(object):
             # [?, 10, 16]
 
     def loss_func(self):
-        with tf.variable_scope('Total_Loss'):
+        with tf.variable_scope('Loss'):
             if self.conf.loss_type == 'margin':
                 loss = margin_loss(self.y, self.v_length, self.conf)
+                self.summary_list.append(tf.summary.scalar('margin', loss))
             elif self.conf.loss_type == 'spread':
                 self.generate_margin()
                 loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
+                self.summary_list.append(tf.summary.scalar('spread_loss', loss))
             if self.conf.L2_reg:
                 with tf.name_scope('l2_loss'):
                     l2_loss = tf.reduce_sum(self.conf.lmbda * tf.stack([tf.nn.l2_loss(v)
                                                                         for v in tf.get_collection('weights')]))
                     loss += l2_loss
-
+                self.summary_list.append(tf.summary.scalar('l2_loss', self.l2_loss))
             if self.conf.add_recon_loss or self.conf.add_decoder:
                 with tf.variable_scope('Reconstruction_Loss'):
                     orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.channel))
                     squared = tf.square(self.decoder_output - orgin)
-                    self.reconstruction_err = tf.reduce_mean(squared)
-                    self.total_loss = loss + self.conf.alpha * self.reconstruction_err
+                    self.recon_err = tf.reduce_mean(squared)
+                    self.total_loss = loss + self.conf.alpha * self.conf.width * self.conf.height * self.recon_err
+                    self.summary_list.append(tf.summary.scalar('reconstruction_loss', self.recon_err))
+                    recon_img = tf.reshape(self.decoder_output,
+                                           shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
             else:
                 self.total_loss = loss
             self.mean_loss, self.mean_loss_op = tf.metrics.mean(self.total_loss)
+
+        if self.conf.add_recon_loss or self.conf.add_decoder:
+            self.summary_list.append(tf.summary.image('reconstructed', recon_img))
+            self.summary_list.append(tf.summary.image('original', self.x))
 
     def accuracy_func(self):
         with tf.variable_scope('Accuracy'):
@@ -94,6 +103,7 @@ class BaseModel(object):
                                                            decay_rate=0.8,
                                                            staircase=True)
                 self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
+            self.summary_list.append(tf.summary.scalar('learning_rate', self.learning_rate))
             optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
             """Compute gradient."""
             grads = optimizer.compute_gradients(self.total_loss)
@@ -103,11 +113,9 @@ class BaseModel(object):
             # with tf.control_dependencies(grad_check):
             #     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             #     with tf.control_dependencies(update_ops):
-            self.grad_sum_list = []
+            """Add graident summary"""
             for grad, var in grads:
-                self.grad_sum_list.append(tf.summary.histogram(var.name, grad))
-
-
+                self.summary_list.append(tf.summary.histogram(var.name, grad))
             if self.conf.grad_clip:
                 """Clip graident."""
                 grads = [(tf.clip_by_value(grad, -10., 10.), var) for grad, var in grads]
@@ -126,16 +134,8 @@ class BaseModel(object):
         print('*' * 50)
 
     def configure_summary(self):
-        if self.conf.add_recon_loss:
-            recon_img = tf.reshape(self.decoder_output,
-                                   shape=(-1, self.conf.height, self.conf.width, self.conf.channel))
-            summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy),
-                            tf.summary.image('original', self.x),
-                            tf.summary.image('reconstructed', recon_img)]
-        else:
-            summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)] + self.summary_list + self.grad_sum_list
+        summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
+                        tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)] + self.summary_list
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):
@@ -169,7 +169,7 @@ class BaseModel(object):
             print('*' * 50)
         self.num_val_batch = int(self.data_reader.y_valid.shape[0] / self.conf.batch_size)
         for train_step in range(1, self.conf.max_step + 1):
-            print(train_step)
+            # print(train_step)
             self.is_train = True
             if train_step % self.conf.SUMMARY_FREQ == 0:
                 x_batch, y_batch = self.data_reader.next_batch()
