@@ -49,7 +49,13 @@ class BaseModel(object):
             elif self.conf.loss_type == 'spread':
                 self.generate_margin()
                 loss = spread_loss(self.y, self.act, self.margin, 'spread_loss')
-            if self.conf.add_recon_loss:
+            if self.conf.L2_reg:
+                with tf.name_scope('l2_loss'):
+                    l2_loss = tf.reduce_sum(self.conf.lmbda * tf.stack([tf.nn.l2_loss(v)
+                                                                        for v in tf.get_collection('weights')]))
+                    loss += l2_loss
+
+            if self.conf.add_recon_loss or self.conf.add_decoder:
                 with tf.variable_scope('Reconstruction_Loss'):
                     orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.channel))
                     squared = tf.square(self.decoder_output - orgin)
@@ -91,13 +97,22 @@ class BaseModel(object):
             optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
             """Compute gradient."""
             grads = optimizer.compute_gradients(self.total_loss)
-            grad_check = [tf.check_numerics(g, message='Gradient NaN Found!') for g, _ in grads if g is not None] \
-                         + [tf.check_numerics(self.total_loss, message='Loss NaN Found')]
+            # grad_check = [tf.check_numerics(g, message='Gradient NaN Found!') for g, _ in grads if g is not None] \
+            #              + [tf.check_numerics(self.total_loss, message='Loss NaN Found')]
             """Apply graident."""
-            with tf.control_dependencies(grad_check):
-                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-                with tf.control_dependencies(update_ops):
-                    grads = [(tf.where(tf.is_nan(grad), tf.zeros(grad.shape), grad), var) for grad, var in grads]
+            # with tf.control_dependencies(grad_check):
+            #     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            #     with tf.control_dependencies(update_ops):
+            self.grad_sum_list = []
+            for grad, var in grads:
+                self.grad_sum_list.append(tf.summary.histogram(var.name, grad))
+
+
+            if self.conf.grad_clip:
+                """Clip graident."""
+                grads = [(tf.clip_by_value(grad, -10., 10.), var) for grad, var in grads]
+            """NaN to zero graident."""
+            grads = [(tf.where(tf.is_nan(grad), tf.zeros(grad.shape), grad), var) for grad, var in grads]
             self.train_op = optimizer.apply_gradients(grads, global_step=self.global_step)
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()
@@ -120,7 +135,7 @@ class BaseModel(object):
                             tf.summary.image('reconstructed', recon_img)]
         else:
             summary_list = [tf.summary.scalar('Loss/total_loss', self.mean_loss),
-                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)] + self.summary_list
+                            tf.summary.scalar('Accuracy/average_accuracy', self.mean_accuracy)] + self.summary_list + self.grad_sum_list
         self.merged_summary = tf.summary.merge(summary_list)
 
     def save_summary(self, summary, step, mode):

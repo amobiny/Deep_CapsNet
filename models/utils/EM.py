@@ -64,6 +64,7 @@ def matrix_capsules_em_routing(votes, i_activations, beta_v, beta_a, iterations,
             # rr_prime: [N, OH, OW, KH x KW x I, O, 1]
             rr_prime = rr * i_activations
             # rr_prime = rr_prime / (tf.reduce_sum(rr_prime, axis=-2, keep_dims=True) + epsilon)
+
             # rr_prime_sum: sum acorss i, [N, OH, OW, 1, O, 1]
             rr_prime_sum = tf.reduce_sum(rr_prime, axis=-3, keepdims=True, name='rr_prime_sum')
 
