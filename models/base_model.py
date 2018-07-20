@@ -56,7 +56,7 @@ class BaseModel(object):
                     l2_loss = tf.reduce_sum(self.conf.lmbda * tf.stack([tf.nn.l2_loss(v)
                                                                         for v in tf.get_collection('weights')]))
                     loss += l2_loss
-                self.summary_list.append(tf.summary.scalar('l2_loss', self.l2_loss))
+                self.summary_list.append(tf.summary.scalar('l2_loss', l2_loss))
             if self.conf.add_recon_loss or self.conf.add_decoder:
                 with tf.variable_scope('Reconstruction_Loss'):
                     orgin = tf.reshape(self.x, shape=(-1, self.conf.height * self.conf.width * self.conf.channel))
@@ -100,7 +100,7 @@ class BaseModel(object):
                 learning_rate = tf.train.exponential_decay(self.conf.init_lr,
                                                            self.global_step,
                                                            decay_steps=5500,
-                                                           decay_rate=0.8,
+                                                           decay_rate=0.95,
                                                            staircase=True)
                 self.learning_rate = tf.maximum(learning_rate, self.conf.lr_min)
             self.summary_list.append(tf.summary.scalar('learning_rate', self.learning_rate))

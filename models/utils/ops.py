@@ -116,6 +116,7 @@ def capsule_conv(input_pose, input_act, K, OUT, stride, iters, std=0.01, add_reg
         beta_a_summary = tf.summary.histogram('beta_a', beta_a)
         sum_list.append(beta_a_summary)
         if add_reg:
+            tf.add_to_collection('weights', weights)
             tf.add_to_collection('weights', beta_v)
             tf.add_to_collection('weights', beta_a)
         out_pose, out_act = matrix_capsules_em_routing(votes, act, beta_v, beta_a, iters, name='EM')
@@ -175,6 +176,7 @@ def capsule_fc(input_pose, input_act, OUT, iters, std=0.01, add_coord=True, add_
         beta_a_summary = tf.summary.histogram('beta_a', beta_a)
         sum_list.append(beta_a_summary)
         if add_reg:
+            tf.add_to_collection('weights', weights)
             tf.add_to_collection('weights', beta_v)
             tf.add_to_collection('weights', beta_a)
 
