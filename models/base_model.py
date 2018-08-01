@@ -9,7 +9,11 @@ class BaseModel(object):
         self.sess = sess
         self.conf = conf
         self.summary_list = []
-        self.input_shape = [self.conf.batch_size, self.conf.height, self.conf.width, self.conf.channel]
+        if self.conf.dim == 2:
+            self.input_shape = [self.conf.batch_size, self.conf.height, self.conf.width, self.conf.channel]
+        else:
+            self.input_shape = [self.conf.batch_size, self.conf.height, self.conf.width, self.conf.depth, self.conf.channel]
+
         self.output_shape = [self.conf.batch_size, self.conf.num_cls]
         self.create_placeholders()
         self.global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0),
@@ -83,7 +87,7 @@ class BaseModel(object):
     def generate_margin(self):
         # margin schedule
         # margin increase from 0.2 to 0.9 after margin_schedule_epoch_achieve_max
-        NUM_STEPS_PER_EPOCH = int(55000 / self.conf.batch_size)
+        NUM_STEPS_PER_EPOCH = int(self.conf.N / self.conf.batch_size)
         margin_schedule_epoch_achieve_max = 10.0
         self.margin = tf.train.piecewise_constant(tf.cast(self.global_step, dtype=tf.int32),
                                                   boundaries=[int(NUM_STEPS_PER_EPOCH *
@@ -114,13 +118,13 @@ class BaseModel(object):
             #     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             #     with tf.control_dependencies(update_ops):
             """Add graident summary"""
-            for grad, var in grads:
-                self.summary_list.append(tf.summary.histogram(var.name, grad))
+            # for grad, var in grads:
+            #     self.summary_list.append(tf.summary.histogram(var.name, grad))
             if self.conf.grad_clip:
                 """Clip graident."""
                 grads = [(tf.clip_by_value(grad, -10., 10.), var) for grad, var in grads]
             """NaN to zero graident."""
-            grads = [(tf.where(tf.is_nan(grad), tf.zeros(grad.shape), grad), var) for grad, var in grads]
+            # grads = [(tf.where(tf.is_nan(grad), tf.zeros(grad.shape), grad), var) for grad, var in grads]
             self.train_op = optimizer.apply_gradients(grads, global_step=self.global_step)
         self.sess.run(tf.global_variables_initializer())
         trainable_vars = tf.trainable_variables()

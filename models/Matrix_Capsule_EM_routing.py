@@ -44,6 +44,8 @@ class MatrixCapsNet(BaseModel):
             for summary in summary_list:
                 self.summary_list.append(summary)
 
+            self.v_length = self.act
+
             self.y_pred = tf.to_int32(tf.argmax(self.act, axis=1))
             if self.conf.add_decoder:
                 self.decoder()

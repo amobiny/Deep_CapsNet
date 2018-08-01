@@ -12,7 +12,7 @@ flags.DEFINE_integer('SUMMARY_FREQ', 100, 'Number of step to save summary')
 flags.DEFINE_integer('VAL_FREQ', 500, 'Number of step to evaluate the network on Validation data')
 
 # Hyper-parameters
-flags.DEFINE_string('loss_type', 'spread', 'spread or margin')
+flags.DEFINE_string('loss_type', 'margin', 'spread or margin')
 flags.DEFINE_boolean('add_recon_loss', False, 'To add reconstruction loss')
 
 # For margin loss
@@ -27,13 +27,14 @@ flags.DEFINE_float('init_lr', 1e-3, 'Initial learning rate')
 flags.DEFINE_float('lr_min', 1e-5, 'Minimum learning rate')
 
 # data
-flags.DEFINE_string('data', 'mnist', 'mnist or nodule or cifar10')
+flags.DEFINE_integer('N', 7000, 'Total number of training examples')
+flags.DEFINE_string('data', 'nodule', 'mnist or nodule or cifar10')
 flags.DEFINE_integer('dim', 2, '2D or 3D for nodule data')
 flags.DEFINE_boolean('one_hot', True, 'one-hot-encode the labels')
 flags.DEFINE_boolean('data_augment', False, 'Adds augmentation to data')
 flags.DEFINE_integer('max_angle', 40, 'Maximum rotation angle along each axis; when applying augmentation')
-flags.DEFINE_integer('height', 28, 'Network input height size')
-flags.DEFINE_integer('width', 28, 'Network input width size')
+flags.DEFINE_integer('height', 32, 'Network input height size')
+flags.DEFINE_integer('width', 32, 'Network input width size')
 flags.DEFINE_integer('depth', 32, 'Network input depth size (in the case of 3D input images)')
 flags.DEFINE_integer('channel', 1, 'Network input channel size')
 

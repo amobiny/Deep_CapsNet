@@ -12,7 +12,7 @@ class DataLoader(object):
         self.augment = cfg.data_augment
         self.max_angle = cfg.max_angle
         self.batch_size = cfg.batch_size
-        self.num_tr = cfg.num_tr
+        self.num_tr = cfg.N
         if self.cfg.dim == 2:
             self.data_path = '/home/cougarnet.uh.edu/amobiny/Desktop/Lung_Nodule_data/Lung_Nodule_2d.h5'
         elif self.cfg.dim == 3:
