@@ -2,6 +2,7 @@ import random
 import scipy
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
+import h5py
 
 
 class DataLoader(object):
@@ -10,23 +11,29 @@ class DataLoader(object):
         self.cfg = cfg
         self.augment = cfg.data_augment
         self.max_angle = cfg.max_angle
-        self.mnist = input_data.read_data_sets("data/mnist", one_hot=True)
+        self.batch_size = cfg.batch_size
+        self.data_path = './data/data_' + str(cfg.height) + '.h5'
 
     def get_data(self, mode='train'):
+        h5f = h5py.File(self.data_path, 'r')
         if mode == 'train':
-            x_train, self.y_train = self.mnist.train.images, self.mnist.train.labels
-            self.x_train = x_train.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
+            x_train = h5f['X_train'][:]
+            y_train = h5f['Y_train'][:]
+            self.x_train, self.y_train = self.preprocess(x_train, y_train)
         elif mode == 'valid':
-            x_valid, self.y_valid = self.mnist.validation.images, self.mnist.validation.labels
-            self.x_valid = x_valid.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
+            x_valid = h5f['X_test'][:]
+            y_valid = h5f['Y_test'][:]
+            self.x_valid, self.y_valid = self.preprocess(x_valid, y_valid)
         elif mode == 'test':
-            x_test, self.y_test = self.mnist.test.images, self.mnist.test.labels
-            self.x_test = x_test.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
+            x_test = h5f['X_test'][:]
+            y_test = h5f['Y_test'][:]
+            self.x_test, self.y_test = self.preprocess(x_test, y_test)
+        h5f.close()
 
     def next_batch(self, start=None, end=None, mode='train'):
         if mode == 'train':
-            x, y = self.mnist.train.next_batch(self.cfg.batch_size)
-            x = x.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel))
+            x = self.x_train[start:end]
+            y = self.y_train[start:end]
             if self.augment:
                 x = random_rotation_2d(x, self.cfg.max_angle)
         elif mode == 'valid':
@@ -49,9 +56,26 @@ class DataLoader(object):
     def randomize(self):
         """ Randomizes the order of data samples and their corresponding labels"""
         permutation = np.random.permutation(self.y_train.shape[0])
-        shuffled_x = self.x_train[permutation, :, :, :]
-        shuffled_y = self.y_train[permutation]
-        return shuffled_x, shuffled_y
+        self.x_train = self.x_train[permutation, :, :, :]
+        self.y_train = self.y_train[permutation]
+
+    def preprocess(self, x, y, normalize=None, one_hot=False):
+        if normalize == 'standard':
+            self.get_stats()
+            x = (x - self.mean) / self.std
+        elif normalize == 'unity_based':
+            x /= 255.
+        x = x.reshape((-1, self.cfg.height, self.cfg.width, self.cfg.channel)).astype(np.float32)
+        if one_hot:
+            y = (np.arange(self.cfg.num_cls) == y[:, None]).astype(np.float32)
+        return x, y
+
+    def get_stats(self):
+        h5f = h5py.File(self.data_path, 'r')
+        x_train = h5f['X_train'][:]
+        h5f.close()
+        self.mean = np.mean(x_train, axis=0)
+        self.std = np.std(x_train, axis=0)
 
 
 def random_rotation_2d(batch, max_angle):
